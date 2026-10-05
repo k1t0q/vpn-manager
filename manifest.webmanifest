@@ -1,0 +1,11 @@
+{
+  "id": "/vpn-manager/",
+  "name": "VPN MANAGER k1t0",
+  "short_name": "VPN MANAGER",
+  "start_url": "/vpn-manager/",
+  "scope": "/vpn-manager/",
+  "display": "standalone",
+  "background_color": "#0f1115",
+  "theme_color": "#0f1115",
+  "description": "VPN MANAGER k1t0 — управление подписками WireGuard"
+}
