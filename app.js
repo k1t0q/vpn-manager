@@ -140,7 +140,7 @@ function filtered(){
 
   let base=attentionOnly?clients.filter(attentionNeeded):clients;
 
-  if(clientFilter!=="all"){
+  if(clientFilter!=="all"&&clientFilter!=="days_asc"){
     base=base.filter(c=>{
       const d=days(c.end_date),w=wgFor(c);
       if(clientFilter==="active")return c.period==="lifetime"||(d!==null&&d>7);
@@ -153,16 +153,28 @@ function filtered(){
     });
   }
 
-  if(!q)return base;
+  if(q){
+    base=base.filter(c=>{
+      const w=wgFor(c);
+      return (c.name||"").toLowerCase().includes(q)
+        ||(c.phone||"").toLowerCase().includes(q)
+        ||(c.note||"").toLowerCase().includes(q)
+        ||(w?.name||"").toLowerCase().includes(q)
+        ||(w?.address||"").toLowerCase().includes(q);
+    });
+  }
 
-  return base.filter(c=>{
-    const w=wgFor(c);
-    return (c.name||"").toLowerCase().includes(q)
-      ||(c.phone||"").toLowerCase().includes(q)
-      ||(c.note||"").toLowerCase().includes(q)
-      ||(w?.name||"").toLowerCase().includes(q)
-      ||(w?.address||"").toLowerCase().includes(q);
-  });
+  if(clientFilter==="days_asc"){
+    base=base.slice().sort((a,b)=>{
+      const ad=a.period==="lifetime"?Infinity:days(a.end_date);
+      const bd=b.period==="lifetime"?Infinity:days(b.end_date);
+      const av=ad===null?Infinity:ad;
+      const bv=bd===null?Infinity:bd;
+      return av-bv || (a.name||"").localeCompare(b.name||"","ru");
+    });
+  }
+
+  return base;
 }
 function wgStatus(c){
   if(!c.wg_client_id)return '<span class="wg-status none">Не привязан</span>';
