@@ -130,6 +130,20 @@ function sortClientsNewestFirst(){
   });
 }
 
+function renderNotifications(){
+  const box=$("siteNotifications");
+  if(!box)return;
+  const alerts=[];
+  clients.forEach(c=>{
+    if(c.period==="lifetime")return;
+    const d=days(c.end_date);
+    if(d===3)alerts.push({type:"warning",text:`У клиента ${esc(c.name)} осталось 3 дня — до ${fmt(c.end_date)}.`});
+    else if(d!==null&&d<=0)alerts.push({type:"expired",text:`У клиента ${esc(c.name)} закончилась подписка${c.wg_client_id?" — VPN отключён":""}.`});
+  });
+  box.classList.toggle("hidden",alerts.length===0);
+  box.innerHTML=alerts.length?`<div class="site-notifications-head">Уведомления <span>${alerts.length}</span></div>`+alerts.map(a=>`<div class="site-notification ${a.type}">${a.text}</div>`).join(""):"";
+}
+
 function renderStats(){
   let a=0,s=0,e=0;
   clients.forEach(c=>{if(c.period==="lifetime"){a++;return}const d=days(c.end_date);if(d===null)return;if(d<=0)e++;else{a++;if(d<=7)s++}});
@@ -204,7 +218,7 @@ function subControls(c){
   return `<select data-sel="${c.id}"><option value="trial">24 часа</option><option value="14d">14 дней</option><option value="1m">1 месяц</option><option value="2m">2 месяца</option><option value="6m">6 месяцев</option><option value="12m">12 месяцев</option><option value="lifetime">Навсегда ∞</option></select><button data-a="extend" data-id="${c.id}">Продлить</button><button class="secondary" data-a="edit" data-id="${c.id}">Изменить</button><button class="secondary" data-a="history" data-id="${c.id}">История</button><button class="danger" data-a="delete" data-id="${c.id}">Удалить</button>`;
 }
 function render(){sortClientsNewestFirst();
-  renderStats();const ac=clients.filter(attentionNeeded).length;if($("attentionCount"))$("attentionCount").textContent=ac;const list=filtered();$("empty").classList.toggle("hidden",list.length>0);
+  renderStats();renderNotifications();const ac=clients.filter(attentionNeeded).length;if($("attentionCount"))$("attentionCount").textContent=ac;const list=filtered();$("empty").classList.toggle("hidden",list.length>0);
   $("rows").innerHTML=list.map(c=>{const[st,cl]=status(c.end_date,c.period);return `<tr>
     <td><b>${esc(c.name)}</b>${c.note?`<small>${esc(c.note)}</small>`:""}</td>
     <td>${esc(c.phone||"")}</td>
