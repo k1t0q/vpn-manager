@@ -97,6 +97,23 @@ async function api(path,opts={}){
   return r;
 }
 async function apiJson(path,opts={}){return (await api(path,opts)).json()}
+const urlBase64ToUint8Array=s=>{const p="=".repeat((4-s.length%4)%4),b=(s+p).replace(/-/g,"+").replace(/_/g,"/"),r=atob(b);return Uint8Array.from([...r].map(c=>c.charCodeAt(0)))};
+async function registerPushWorker(){
+  if(!("serviceWorker" in navigator)||!("PushManager" in window)){if($("pushStatus"))$("pushStatus").textContent="Push не поддерживается";return null}
+  try{const reg=await navigator.serviceWorker.register("./sw.js?v=5.16");const sub=await reg.pushManager.getSubscription();if($("pushStatus"))$("pushStatus").textContent=sub?"Push включён":"Push выключен";if($("pushBtn"))$("pushBtn").textContent=sub?"Push-уведомления включены":"Включить push-уведомления";return reg}catch(e){if($("pushStatus"))$("pushStatus").textContent="Ошибка Service Worker";console.warn(e);return null}
+}
+async function enablePush(){
+  try{
+    const reg=await registerPushWorker();if(!reg)throw new Error("Push не поддерживается на этом устройстве");
+    const permission=await Notification.requestPermission();if(permission!=="granted")throw new Error("Разрешение на уведомления не выдано");
+    const key=cfg.VAPID_PUBLIC_KEY;if(!key||key.includes("PASTE_"))throw new Error("На сервере ещё не создан VAPID-ключ");
+    let sub=await reg.pushManager.getSubscription();if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(key)});
+    const r=await api("/api/push/subscribe",{method:"POST",body:JSON.stringify(sub.toJSON())});
+    if(!r.ok)throw new Error("Не удалось сохранить push-подписку");
+    $("pushStatus").textContent="Push включён";$("pushBtn").textContent="Push-уведомления включены";msg("Push-уведомления включены");
+  }catch(e){msg("Push: "+e.message,true)}
+}
+
 
 function fillReferrers(){
   const sel=$("referrer"),cur=sel.value;
@@ -402,6 +419,7 @@ $("editForm").addEventListener("submit",async e=>{
   await logHistory(id,"edited",`Данные клиента изменены; ${editPeriod==="lifetime"?"тариф Навсегда ∞":"осталось дней: "+left}`);$("editDialog").close();msg("Изменения сохранены");load();
 });
 
+if($("pushBtn"))$("pushBtn").onclick=enablePush;registerPushWorker();
 $("closeEdit").onclick=()=>$("editDialog").close();
 if($("editPeriod"))$("editPeriod").onchange=()=>{const life=$("editPeriod").value==="lifetime";$("editDaysLeft").disabled=life;if(life)$("editDaysLeft").value=""};
 $("closeHistory").onclick=()=>$("historyDialog").close();
