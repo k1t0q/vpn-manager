@@ -188,6 +188,7 @@ async function handleClientAction(e){
  $('referralInfo').textContent=c.name+' → '+ref.name;
  $('referralBonusPeriod').value=['1m','6m','12m'].includes(c.period)?c.period:'1m';
  dialog.showModal();
+ dialog.focus({preventScroll:true});
  }else if(btn.dataset.act==='edit'){
  const f=$('editForm');for(const key of ['id','name','phone','start_date','period','end_date'])f.elements[key].value=c[key]??'';
  const inviter=$('editReferrer');
