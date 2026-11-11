@@ -351,13 +351,11 @@ $('extendForm').addEventListener('submit',async e=>{
  }catch(err){msg('Не удалось продлить: '+err.message,true);alert('Не удалось продлить: '+err.message)}
  finally{button.disabled=false}
 });
-})();
-
 
 // Mobile header actions reuse the existing desktop handlers.
 for(const [mobile,desktop] of [['mobileReload','reload'],['mobileExport','exportCsv'],['mobileLogout','logout']]){
  const button=$(mobile);
- if(button)button.addEventListener('click',()=>$(desktop).click());
+ if(button)button.addEventListener('click',()=>{if(mobile==='mobileReload'){window.location.reload();return}$(desktop).click()});
 }
 const mobileActions=$('mobileHeaderActions');
 if(mobileActions){
@@ -365,3 +363,4 @@ if(mobileActions){
  new MutationObserver(syncMobileActions).observe($('workspace'),{attributes:true,attributeFilter:['class']});
  syncMobileActions();
 }
+})();
