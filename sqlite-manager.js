@@ -144,10 +144,11 @@ async function handleClientAction(e){
  $('history').innerHTML=(d.history||[]).map(h=>'<p><b>'+esc(h.event_type)+'</b> — '+esc(h.description)+'<small> '+esc(h.created_at)+'</small></p>').join('')||'<p>Записей пока нет</p>';
  $('historyDialog').showModal();
  }else{
- const period=prompt('Продлить на: 1m, 6m, 12m или lifetime','1m');
- if(period===null)return;if(!['1m','6m','12m','lifetime'].includes(period)){msg('Неверный тариф',true);return}
- if(!confirm('Продлить '+c.name+' на '+period+'?'))return;
- await call('/api/clients/'+id+'/extend',{method:'POST',body:JSON.stringify({period})});await refresh();msg('Подписка продлена');
+ const dialog=$('extendDialog');
+ $('extendClientName').textContent=c.name;
+ $('extendPeriod').value=['1m','6m','12m','lifetime'].includes(c.period)?c.period:'1m';
+ dialog.dataset.clientId=String(id);
+ dialog.showModal();
  }
  }catch(e){msg(e.message,true)}
 }
@@ -208,3 +209,15 @@ if(token){
  });
 }
 })();
+$('closeExtend').onclick=()=>$('extendDialog').close();
+$('extendForm').addEventListener('submit',async e=>{
+ e.preventDefault();
+ const dialog=$('extendDialog'),id=Number(dialog.dataset.clientId),period=$('extendPeriod').value;
+ const button=$('confirmExtend');
+ button.disabled=true;
+ try{
+  await call('/api/clients/'+id+'/extend',{method:'POST',body:JSON.stringify({period})});
+  dialog.close();await refresh();msg('Подписка продлена');
+ }catch(err){msg(err.message,true)}
+ finally{button.disabled=false}
+});
