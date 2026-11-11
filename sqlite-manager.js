@@ -160,9 +160,6 @@ $('closeEdit').onclick=()=>$('editDialog').close();
 $('deleteClient').onclick=async()=>{
  const f=$('editForm'),id=Number(f.elements.id.value);
  const c=clients.find(x=>Number(x.id)===id);if(!c)return;
- if(!confirm('Удалить клиента «'+c.name+'» из базы? Это действие необратимо. WireGuard-профиль останется без изменений.'))return;
- const name=prompt('Для подтверждения удаления введите имя клиента точно: '+c.name);
- if(name!==c.name){if(name!==null)msg('Удаление отменено: имя не совпадает',true);return}
  try{
   await call('/api/clients/'+id,{method:'DELETE'});
   $('editDialog').close();await refresh();msg('Клиент «'+c.name+'» удалён из базы. WireGuard не изменён.');
