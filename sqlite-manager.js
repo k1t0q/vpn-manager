@@ -31,7 +31,7 @@ function wgDisplay(c){
  if(!c.wg_client_id)return '<span class="wg-status none">Не привязан</span>';
  const w=wg.find(x=>String(x.id)===String(c.wg_client_id));
  if(!w)return '<span class="wg-status off">Не найден</span>';
- return '<span class="wg-status '+(w.enabled?'on':'off')+'">'+(w.enabled?'● VPN включён':'● VPN отключён')+'</span><small>Последнее подключение: '+esc(lastSeen(w))+'</small>'+(w.address?'<small>IP: '+esc(w.address)+'</small>':'');
+ return '<span class="wg-status '+(w.enabled?'on':'off')+'">'+(w.enabled?'● VPN включён':'● VPN отключён')+'</span>'+(w.address?'<small>IP: '+esc(w.address)+' / активность: '+esc(lastSeen(w))+'</small>':'<small>Активность: '+esc(lastSeen(w))+'</small>');
 }
 
 async function call(path,opts={}){
