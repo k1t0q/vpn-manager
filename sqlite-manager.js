@@ -25,7 +25,7 @@ function render(){
  $('sTotal').textContent=clients.length;$('sActive').textContent=active;
  $('sSoon').textContent=clients.filter(c=>c.period!=='lifetime'&&remaining(c)>0&&remaining(c)<=7).length;
  $('sExpired').textContent=clients.filter(c=>c.period!=='lifetime'&&remaining(c)!==null&&remaining(c)<=0).length;
- $('rows').innerHTML=shown.map(c=>'<tr><td><b>'+esc(c.name)+'</b><div class="m-muted">'+esc(c.note||'')+'</div></td><td>'+esc(c.phone||'—')+'</td><td>'+esc(c.period)+'</td><td>'+esc(c.end_date||'∞')+'</td><td>'+esc(c.wg_client_id?(wgIds.has(c.wg_client_id)?'Привязан':'Не найден'):'Не привязан')+'</td><td><div class="m-actions"><button data-act="extend" data-id="'+c.id+'" class="secondary">Продлить</button><button data-act="history" data-id="'+c.id+'" class="secondary">История</button>'+'<button data-act="edit" data-id="'+c.id+'" class="secondary">Изменить</button>'+(!c.wg_client_id?'<button data-act="wg-create" data-id="'+c.id+'">Создать VPN</button>':('<button data-act="wg-toggle" data-id="'+c.id+'" class="secondary">'+(wg.find(w=>w.id===c.wg_client_id)?.enabled?'Отключить':'Включить')+'</button><button data-act="wg-qr" data-id="'+c.id+'" class="secondary">QR</button><button data-act="wg-config" data-id="'+c.id+'" class="secondary">Конфиг</button>'))+'</div></td></tr>').join('');
+ $('rows').innerHTML=shown.map(c=>'<tr><td><b>'+esc(c.name)+'</b><div class="m-muted">'+esc(c.note||'')+'</div></td><td>'+esc(c.phone||'—')+'</td><td>'+esc(c.period)+'</td><td>'+esc(c.end_date||'∞')+'</td><td>'+esc(c.wg_client_id?(wgIds.has(c.wg_client_id)?'Привязан':'Не найден'):'Не привязан')+'</td><td><div class="m-actions"><button data-act="extend" data-id="'+c.id+'" class="secondary">Продлить</button><button data-act="history" data-id="'+c.id+'" class="secondary">История</button>'+'<button data-act="edit" data-id="'+c.id+'" class="secondary">Изменить</button>'+(c.referrer_id?'<button data-act="referral" data-id="'+c.id+'" class="secondary">Бонус рефералу</button>':'')+(!c.wg_client_id?'<button data-act="wg-create" data-id="'+c.id+'">Создать VPN</button>':('<button data-act="wg-toggle" data-id="'+c.id+'" class="secondary">'+(wg.find(w=>w.id===c.wg_client_id)?.enabled?'Отключить':'Включить')+'</button><button data-act="wg-qr" data-id="'+c.id+'" class="secondary">QR</button><button data-act="wg-config" data-id="'+c.id+'" class="secondary">Конфиг</button>'))+'</div></td></tr>').join('');
  const current=$('referrer').value;
  $('referrer').innerHTML='<option value="">Никто</option>'+clients.map(c=>'<option value="'+c.id+'">'+esc(c.name)+'</option>').join('');
  $('referrer').value=current;
@@ -53,7 +53,14 @@ $('rows').onclick=async e=>{
  const btn=e.target.closest('button[data-act]');if(!btn)return;
  const id=Number(btn.dataset.id),c=clients.find(x=>x.id===id);if(!c)return;
  try{
- if(btn.dataset.act==='edit'){
+ if(btn.dataset.act==='referral'){
+ const ref=clients.find(x=>String(x.id)===String(c.referrer_id));
+ const bonus={'1m':14,'1':14,'6m':30,'6':30,'12m':60,'12':60}[c.period];
+ if(!ref||!bonus)throw Error('Для этого клиента бонус не предусмотрен');
+ if(!confirm('Начислить '+bonus+' дней клиенту '+ref.name+' за приглашение '+c.name+'? Начисление допускается один раз. WireGuard не изменяется.'))return;
+ const r=await call('/api/referrals/award-safe',{method:'POST',body:JSON.stringify({client_id:id})});
+ await refresh();msg('Начислено +'+r.bonus_days+' дней клиенту '+ref.name);
+ }else if(btn.dataset.act==='edit'){
  const f=$('editForm');for(const key of ['id','name','phone','start_date','period','end_date','note'])f.elements[key].value=c[key]??'';
  $('editDialog').showModal();
  }else if(btn.dataset.act==='wg-toggle'){
