@@ -120,11 +120,21 @@ $('noticePreview').onclick=()=>{
  const candidates=clients.filter(c=>c.period!=='lifetime'&&remaining(c)!==null&&remaining(c)<=3).sort((a,b)=>remaining(a)-remaining(b));
  $('noticeItems').innerHTML=candidates.map(c=>{
   const days=remaining(c),kind=days<=0?'Срок истёк':'Осталось '+days+' дн.';
-  return '<p><b>'+esc(c.name)+'</b> · '+esc(kind)+' · '+esc(c.end_date||'')+'</p>';
+  return '<p><b>'+esc(c.name)+'</b> · '+esc(kind)+' · '+esc(c.end_date||'')+' <button class="secondary" data-notice-id="'+c.id+'">Скопировать текст</button></p>';
  }).join('')||'<p>Нет подписок, требующих уведомления.</p>';
  $('noticeDialog').showModal();
 };
 $('closeNotices').onclick=()=>$('noticeDialog').close();
+$('noticeItems').onclick=async e=>{
+ const btn=e.target.closest('[data-notice-id]');if(!btn)return;
+ const c=clients.find(x=>String(x.id)===btn.dataset.noticeId);if(!c)return;
+ const days=remaining(c);
+ const text=days<=0
+ ?'Здравствуйте! Срок действия вашей VPN-подписки закончился '+(c.end_date||'')+'. Для продления свяжитесь с администратором.'
+ :'Здравствуйте! До окончания вашей VPN-подписки осталось '+days+' дн. (до '+c.end_date+'). Если хотите продлить доступ, свяжитесь с администратором.';
+ try{await navigator.clipboard.writeText(text);msg('Текст уведомления скопирован для '+c.name)}
+ catch{window.prompt('Скопируйте текст уведомления:',text)}
+};
 $('reload').onclick=()=>refresh().catch(e=>msg(e.message,true));
 $('search').oninput=render;$('filter').onchange=render;
 $('logout').onclick=async()=>{try{await call('/auth/logout',{method:'POST'})}catch{}token='';localStorage.removeItem(TOKEN_KEY);clients=[];wg=[];$('workspace').classList.add('m-hide');$('loginPane').classList.remove('m-hide');msg('Выход выполнен')};
