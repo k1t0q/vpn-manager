@@ -219,7 +219,7 @@ $('editForm').onsubmit=async e=>{
  e.preventDefault();const d=Object.fromEntries(new FormData(e.currentTarget));const id=Number(d.id);
  if(d.period==='lifetime')d.end_date=null;
  try{await call('/api/clients/'+id,{method:'PATCH',body:JSON.stringify(d)});$('editDialog').close();await refresh();msg('Клиент обновлён')}
- catch(err){msg('Редактирование пока недоступно на сервере: '+err.message,true)}
+ catch(err){const message='Не удалось сохранить изменения: '+err.message;msg(message,true);alert(message)}
 };
 
 function csvCell(value){const v=String(value??'');return '"'+(/^[=+@\-\t\r]/.test(v)?"'"+v:v).replace(/"/g,'""')+'"'}
