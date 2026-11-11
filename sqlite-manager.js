@@ -53,7 +53,7 @@ function renderAlerts(){
 }
 function render(){
  const q=$('search').value.trim().toLowerCase(),f=$('filter').value;
- const shown=clients.filter(c=>(!q||[c.name,c.phone,c.note].some(v=>String(v||'').toLowerCase().includes(q)))&&(f==='all'||(f==='lifetime'&&c.period==='lifetime')||(f==='active'&&(c.period==='lifetime'||remaining(c)>0))||(f==='expired'&&c.period!=='lifetime'&&remaining(c)<=0)||(f==='soon'&&c.period!=='lifetime'&&remaining(c)>0&&remaining(c)<7)||(f==='wg_on'&&wg.some(w=>String(w.id)===String(c.wg_client_id)&&w.enabled))||(f==='wg_off'&&!!c.wg_client_id&&!wg.some(w=>w.id===c.wg_client_id&&w.enabled))));
+ const shown=clients.filter(c=>(!q||[c.name,c.phone,c.note].some(v=>String(v||'').toLowerCase().includes(q)))&&(f==='all'||(f==='lifetime'&&c.period==='lifetime')||(f==='active'&&(c.period==='lifetime'||remaining(c)>0))||(f==='expired'&&c.period!=='lifetime'&&remaining(c)<=0)||(f==='soon'&&c.period!=='lifetime'&&remaining(c)>0&&remaining(c)<=7)||(f==='referrals'&&!!c.referrer_id)||(f==='wg_on'&&wg.some(w=>String(w.id)===String(c.wg_client_id)&&w.enabled))||(f==='wg_off'&&!!c.wg_client_id&&!wg.some(w=>w.id===c.wg_client_id&&w.enabled))));
  $('counts').textContent='Всего: '+clients.length+' · Активных: '+clients.filter(c=>c.period==='lifetime'||remaining(c)>0).length;
  renderAlerts();
  const wgIds=new Set(wg.map(w=>w.id));
@@ -180,13 +180,14 @@ async function handleClientAction(e){
  try{
  if(btn.dataset.act==='referral'){
  const ref=clients.find(x=>String(x.id)===String(c.referrer_id));
- const bonus={'1m':14,'1':14,'6m':30,'6':30,'12m':60,'12':60}[c.period];
- if(!ref||!bonus)throw Error('Для этого клиента бонус не предусмотрен');
- if(!confirm('Начислить '+bonus+' дней клиенту '+ref.name+' за приглашение '+c.name+'? Начисление допускается один раз. WireGuard не изменяется.'))return;
- const r=await call('/api/referrals/award-safe',{method:'POST',body:JSON.stringify({client_id:id})});
- await refresh();msg('Начислено +'+r.bonus_days+' дней клиенту '+ref.name);
+ if(!ref)throw Error('Пригласивший клиент не найден');
+ const dialog=$('referralDialog');
+ dialog.dataset.clientId=String(id);
+ $('referralInfo').textContent=c.name+' → '+ref.name;
+ $('referralBonusPeriod').value=['1m','6m','12m'].includes(c.period)?c.period:'1m';
+ dialog.showModal();
  }else if(btn.dataset.act==='edit'){
- const f=$('editForm');for(const key of ['id','name','phone','start_date','period','end_date','note'])f.elements[key].value=c[key]??'';
+ const f=$('editForm');for(const key of ['id','name','phone','start_date','period','end_date'])f.elements[key].value=c[key]??'';
  const inviter=$('editReferrer');
  inviter.innerHTML='<option value="">Никто</option>'+clients.filter(x=>String(x.id)!==String(c.id)).map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join('');
  inviter.value=c.referrer_id==null?'':String(c.referrer_id);
@@ -271,6 +272,7 @@ $('editDays').addEventListener('input',()=>{
 $('editForm').onsubmit=async e=>{
  e.preventDefault();const d=Object.fromEntries(new FormData(e.currentTarget));const id=Number(d.id);
  delete d.id;
+ delete d.note;
  d.referrer_id=d.referrer_id?Number(d.referrer_id):null;
  if(d.period='lifetime')d.end_date=null;
  else if(!d.end_date){d.end_date=addMonthsISO(iso(),{'1m':1,'6m':6,'12m':12}[d.period]||1)}
@@ -313,6 +315,21 @@ if(token){
    msg('Не удалось восстановить сеанс: '+err.message,true);
  });
 }
+$('cancelReferral').onclick=()=>$('referralDialog').close();
+$('referralForm').addEventListener('submit',async e=>{
+ e.preventDefault();
+ const dialog=$('referralDialog'),id=Number(dialog.dataset.clientId),period=$('referralBonusPeriod').value;
+ const bonus={'1m':14,'6m':30,'12m':60}[period];
+ const btn=$('confirmReferral');
+ if(!bonus)return;
+ if(!confirm('Начислить +'+bonus+' дней пригласившему? Повторное начисление за одного клиента запрещено.'))return;
+ btn.disabled=true;
+ try{
+  const result=await call('/api/referrals/award-safe',{method:'POST',body:JSON.stringify({client_id:id,bonus_period:period})});
+  dialog.close();await refresh();msg('Начислено +'+result.bonus_days+' дней');
+ }catch(err){msg('Ошибка бонуса: '+err.message,true);alert('Ошибка бонуса: '+err.message)}
+ finally{btn.disabled=false}
+});
 $('closeExtend').onclick=()=>$('extendDialog').close();
 $('extendForm').addEventListener('submit',async e=>{
  e.preventDefault();
