@@ -28,10 +28,10 @@ def register(app, authorized, db_connect):
                     if shared:
                         return jsonify(ok=False,error="WireGuard-профиль привязан к нескольким клиентам. Удаление отменено"),409
                 columns={c["name"] for c in con.execute("PRAGMA table_info(clients)")}
+                # Detach invited clients instead of blocking deletion of their inviter.
+                # Preserve invited clients and previously credited bonus days.
                 if "referrer_id" in columns:
-                    linked=con.execute("SELECT COUNT(*) FROM clients WHERE referrer_id=?",(client_id,)).fetchone()[0]
-                    if linked:
-                        return jsonify(ok=False,error="Клиент указан как пригласивший. Удаление отменено"),409
+                    con.execute("UPDATE clients SET referrer_id=NULL WHERE referrer_id=? AND id<>?",(client_id,client_id))
                 # Check dependent references before any irreversible WireGuard deletion.
                 # wg-easy delete is performed only after confirming the peer exists.
                 if peer_id:
