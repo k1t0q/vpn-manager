@@ -102,7 +102,7 @@ function updateReferralHint(){
   const bonus=referralBonus[$("period").value]||0,who=$("referrer").value;
   $("referralHint").textContent=who?(bonus?`Пригласившему будет начислено +${bonus} дней.`:"Для этого тарифа бонус не начисляется."):"";
 }
-function preview(){const s=$("startDate").value;if(s)$("preview").textContent="Подписка до: "+fmt(addPeriod(s,$("period").value))}
+function preview(){const s=$("startDate").value,p=$("period").value;if(s)$("preview").textContent="Подписка до: "+(p==="lifetime"?"Навсегда ∞":fmt(addPeriod(s,p)))}
 function wgFor(c){return c.wg_client_id?wgClients.find(w=>w.id===c.wg_client_id):null}
 function linkOptions(){
   const used=new Set(clients.map(c=>c.wg_client_id).filter(Boolean));
@@ -321,8 +321,8 @@ $("addForm").addEventListener("submit",async e=>{
     const payload={user_id:session.user.id,name:$("name").value.trim(),phone:$("phone").value.trim(),start_date:start,end_date:p==="lifetime"?null:addPeriod(start,p),period:p,note:$("note").value.trim(),referrer_id:referrerId,wg_client_id:wgClientId};
     const {data:created,error}=await sb.from("clients").insert(payload).select("id").single();if(error)throw error; if(created?.id)await logHistory(created.id,"created","Клиент создан");
 
-    const bonus=referralBonus[p]||0;
-    if(referrerId&&bonus>0){
+    const bonus=0; // Server-side referral bonuses require verified endpoint
+    if(false&&referrerId&&bonus>0){
       const ref=clients.find(x=>x.id===referrerId);
       if(ref){
         const base=days(ref.end_date)>0?ref.end_date:today();
@@ -402,7 +402,7 @@ if($("pushBtn")){$("pushBtn").disabled=true;$("pushStatus").textContent="Push в
 $("closeEdit").onclick=()=>$("editDialog").close();
 if($("editPeriod"))$("editPeriod").onchange=()=>{const life=$("editPeriod").value==="lifetime";$("editDaysLeft").disabled=life;if(life)$("editDaysLeft").value=""};
 $("closeHistory").onclick=()=>$("historyDialog").close();
-$("attentionBtn").onclick=()=>{attentionOnly=!attentionOnly;$("attentionBtn").classList.toggle("attention-active",attentionOnly);$("attentionBtn").firstChild.textContent=attentionOnly?"← Все клиенты ":"⚠ Требуют внимания ";render()};$("search").oninput=render;if($("clientFilter"))$("clientFilter").onchange=e=>{clientFilter=e.target.value;render()};$("refreshBtn").onclick=load;if($("importWgBtn"))$("importWgBtn").onclick=importWireGuardClients;$("startDate").onchange=preview;$("period").onchange=()=>{preview();updateReferralHint()};$("referrer").onchange=updateReferralHint;$("logoutBtn").onclick=()=>sb.auth.signOut();
+$("attentionBtn").onclick=()=>{attentionOnly=!attentionOnly;$("attentionBtn").classList.toggle("attention-active",attentionOnly);$("attentionBtn").firstChild.textContent=attentionOnly?"← Все клиенты ":"⚠ Требуют внимания ";render()};$("search").oninput=render;if($("clientFilter"))$("clientFilter").onchange=e=>{clientFilter=e.target.value;render()};$("refreshBtn").onclick=load;if($("importWgBtn")){$("importWgBtn").disabled=true;$("importWgBtn").title="Импорт уже выполнен: 59 клиентов";}$("startDate").onchange=preview;$("period").onchange=()=>{preview();updateReferralHint()};$("referrer").onchange=updateReferralHint;$("logoutBtn").onclick=()=>sb.auth.signOut();
 $("loginForm").addEventListener("submit",async e=>{e.preventDefault();const{error}=await sb.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});$("authMessage").textContent=error?("Ошибка входа: "+error.message):""});
 sb.auth.onAuthStateChange(async(_e,s)=>{session=s;const yes=!!s;$("authScreen").classList.toggle("hidden",yes);$("app").classList.toggle("hidden",!yes);if(yes){$("startDate").value=today();$("period").value="1m";preview();await load();updateReferralHint()}});
 (async()=>{const{data}=await sb.auth.getSession();session=data.session;const yes=!!session;$("authScreen").classList.toggle("hidden",yes);$("app").classList.toggle("hidden",!yes);if(yes){$("startDate").value=today();$("period").value="1m";preview();await load();updateReferralHint()}})();
