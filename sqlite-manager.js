@@ -43,17 +43,15 @@ async function call(path,opts={}){
 const dataList=d=>{const x=d.clients??d.data??d; if(!Array.isArray(x))throw Error('Неизвестный формат списка клиентов');return x};
 function renderAlerts(){
  const box=$('siteNotifications');if(!box)return;
- const alerts=clients.filter(c=>c.period!=='lifetime'&&remaining(c)!==null&&remaining(c)<=7).sort((a,b)=>remaining(a)-remaining(b));
- box.classList.toggle('hidden',alerts.length===0);
- box.innerHTML=alerts.length?'<div class="site-notifications-head">Требуют внимания <span>'+alerts.length+'</span></div>'+alerts.map(c=>{
- const d=remaining(c),expired=d<=0;
- const label=expired?'Подписка истекла'+(d<0?' '+Math.abs(d)+' дн. назад':' сегодня'):'До окончания '+d+' дн.';
- return '<div class="site-notification '+(expired?'expired':'warning')+'"><b>'+esc(c.name)+'</b> — '+esc(label)+' · '+esc(formatDate(c.end_date))+'</div>';
- }).join(''):'';
+ const expired=clients.filter(c=>c.period!=='lifetime'&&remaining(c)!==null&&remaining(c)<=0).sort((a,b)=>remaining(a)-remaining(b));
+ const soon=clients.filter(c=>c.period!=='lifetime'&&remaining(c)>0&&remaining(c)<7).sort((a,b)=>remaining(a)-remaining(b));
+ const section=(type,title,items)=>'<details class="attention-group '+type+'"><summary>'+title+' <span class="attention-count">'+items.length+'</span><span class="attention-chevron">⌄</span></summary><div class="attention-list">'+(items.length?items.map(c=>'<div class="attention-person"><div><b>'+esc(c.name)+'</b><small>До '+esc(formatDate(c.end_date))+'</small></div><strong>'+(type==='expired'?(remaining(c)===0?'Сегодня':Math.abs(remaining(c))+' дн. назад'):remaining(c)+' дн.')+'</strong></div>').join(''):'<div class="attention-empty">Нет клиентов</div>')+'</div></details>';
+ box.classList.remove('hidden');
+ box.innerHTML=section('expired','Истекли',expired)+section('soon','Менее 7 дней',soon);
 }
 function render(){
  const q=$('search').value.trim().toLowerCase(),f=$('filter').value;
- const shown=clients.filter(c=>(!q||[c.name,c.phone,c.note].some(v=>String(v||'').toLowerCase().includes(q)))&&(f==='all'||(f==='lifetime'&&c.period==='lifetime')||(f==='active'&&(c.period==='lifetime'||remaining(c)>0))||(f==='expired'&&c.period!=='lifetime'&&remaining(c)<=0)||(f==='soon'&&c.period!=='lifetime'&&remaining(c)>0&&remaining(c)<=7)||(f==='wg_on'&&wg.some(w=>String(w.id)===String(c.wg_client_id)&&w.enabled))||(f==='wg_off'&&!!c.wg_client_id&&!wg.some(w=>w.id===c.wg_client_id&&w.enabled))));
+ const shown=clients.filter(c=>(!q||[c.name,c.phone,c.note].some(v=>String(v||'').toLowerCase().includes(q)))&&(f==='all'||(f==='lifetime'&&c.period==='lifetime')||(f==='active'&&(c.period==='lifetime'||remaining(c)>0))||(f==='expired'&&c.period!=='lifetime'&&remaining(c)<=0)||(f==='soon'&&c.period!=='lifetime'&&remaining(c)>0&&remaining(c)<7)||(f==='wg_on'&&wg.some(w=>String(w.id)===String(c.wg_client_id)&&w.enabled))||(f==='wg_off'&&!!c.wg_client_id&&!wg.some(w=>w.id===c.wg_client_id&&w.enabled))));
  $('counts').textContent='Всего: '+clients.length+' · Активных: '+clients.filter(c=>c.period==='lifetime'||remaining(c)>0).length;
  renderAlerts();
  const wgIds=new Set(wg.map(w=>w.id));
