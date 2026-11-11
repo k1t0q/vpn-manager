@@ -16,9 +16,9 @@ line='from sqlite_client_crud import register as register_crud\nregister_crud(ap
 if 'register_crud(app,authorized,db_connect)' not in s:
     marker="if __name__=='__main__':"
     if marker in s:
-        s=s.replace(marker,line+'\\n'+marker)
+        s=s.replace(marker,line+chr(10)+marker)
     else:
-        s=s.rstrip()+'\\n\\n'+line
+        s=s.rstrip()+chr(10)+chr(10)+line
     p.write_text(s)
 PY
 python3 -m py_compile staging_api.py sqlite_client_crud.py
