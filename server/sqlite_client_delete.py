@@ -8,7 +8,7 @@ from sqlite_wireguard_staging import _request, _lock
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 def register(app, authorized, db_connect):
-    @app.delete("/api/clients/<int:client_id>")
+    @app.post("/api/clients/<int:client_id>/delete")
     @authorized
     def delete_sqlite_client(client_id):
         try:
