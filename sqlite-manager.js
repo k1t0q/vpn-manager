@@ -110,6 +110,7 @@ async function handleClientAction(e){
  }else if(btn.dataset.act==='edit'){
  const f=$('editForm');for(const key of ['id','name','phone','start_date','period','end_date','note'])f.elements[key].value=c[key]??'';
  $('editDialog').showModal();
+ requestAnimationFrame(()=>{if(document.activeElement?.blur)document.activeElement.blur()});
  }else if(btn.dataset.act==='wg-toggle'){
  const peer=wg.find(w=>String(w.id)===String(c.wg_client_id));
  const action=peer?.enabled?'disable':'enable';
@@ -156,6 +157,17 @@ $('closeQr').onclick=()=>$('qrDialog').close();
 $('qrDialog').addEventListener('close',()=>{const d=$('qrDialog');if(d.dataset.objectUrl){URL.revokeObjectURL(d.dataset.objectUrl);delete d.dataset.objectUrl;$('qrImage').removeAttribute('src')}});
 $('closeHistory').onclick=()=>$('historyDialog').close();
 $('closeEdit').onclick=()=>$('editDialog').close();
+$('deleteClient').onclick=async()=>{
+ const f=$('editForm'),id=Number(f.elements.id.value);
+ const c=clients.find(x=>Number(x.id)===id);if(!c)return;
+ if(!confirm('Удалить клиента «'+c.name+'» из базы? Это действие необратимо. WireGuard-профиль останется без изменений.'))return;
+ const name=prompt('Для подтверждения удаления введите имя клиента точно: '+c.name);
+ if(name!==c.name){if(name!==null)msg('Удаление отменено: имя не совпадает',true);return}
+ try{
+  await call('/api/clients/'+id,{method:'DELETE'});
+  $('editDialog').close();await refresh();msg('Клиент «'+c.name+'» удалён из базы. WireGuard не изменён.');
+ }catch(err){msg('Не удалось удалить клиента: '+err.message,true)}
+};
 $('editForm').onsubmit=async e=>{
  e.preventDefault();const d=Object.fromEntries(new FormData(e.currentTarget));const id=Number(d.id);
  if(d.period==='lifetime')d.end_date=null;
