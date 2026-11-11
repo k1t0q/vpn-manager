@@ -97,6 +97,7 @@ async function refresh(){
  wg=b.clients||[];render();
  msg(b.error?'Клиенты загружены, WireGuard недоступен: '+b.error:'Данные обновлены',!!b.error);
 }
+$('toggleCode').onclick=()=>{const field=$('code'),visible=field.type==='password';field.type=visible?'text':'password';$('toggleCode').textContent=visible?'Скрыть':'Показать';$('toggleCode').setAttribute('aria-label',visible?'Скрыть код':'Показать код')};
 $('login').onsubmit=async e=>{
  e.preventDefault();try{
  const d=await call('/auth/login',{method:'POST',body:JSON.stringify({code:$('code').value})});
@@ -380,7 +381,7 @@ if(token){
  refresh().catch(err=>{
    $('workspace').classList.add('m-hide');
    $('loginPane').classList.remove('m-hide');
-   msg('Не удалось восстановить сеанс: '+err.message,true);
+   msg(/Unauthorized|401|expired|ист[её]к/i.test(err.message)?'Сеанс истёк. Войдите снова — код можно подставить из сохранённых паролей.':'Не удалось восстановить сеанс: '+err.message,true);
  });
 }
 $('cancelReferral').onclick=()=>$('referralDialog').close();
