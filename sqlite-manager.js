@@ -306,8 +306,8 @@ $('shareQr').onclick=async()=>{
   text('Сканируйте код в приложении WireGuard',450,1140,'22px Arial,sans-serif','#b7c6d9','center');
   const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('Не удалось создать изображение')),'image/png'));
   const file=new File([blob],'CAESAR-BOT-QR.png',{type:'image/png'});
-  const botId=/CAESAR BOT #\\d+/i.test(name)?name.match(/CAESAR BOT #\\d+/i)[0]:name;
-  const shareText='CAESAR BOT # — '+botId+'\\nВаш QR-код для подключения VPN через WireGuard.\\nТариф: '+(dialog.dataset.tariff||'—')+'\\nДействует до: '+(dialog.dataset.expires||'—');
+  const botId=/CAESAR BOT #\d+/i.test(name)?name.match(/CAESAR BOT #\d+/i)[0]:name;
+  const shareText='CAESAR BOT # — '+botId+'\nВаш QR-код для подключения VPN через WireGuard.\nТариф: '+(dialog.dataset.tariff||'—')+'\nДействует до: '+(dialog.dataset.expires||'—');
   if(navigator.share&&(!navigator.canShare||navigator.canShare({files:[file]}))){
    try{await navigator.share({files:[file],title:'CAESAR BOT #',text:shareText});return}
    catch(e){if(e.name==='AbortError')return}
