@@ -58,6 +58,11 @@ def register(app, authorized, db_connect):
             referred=con.execute("SELECT COUNT(*) FROM clients WHERE referrer_id=?", (client_id,)).fetchone()[0]
             if referred:
                 return jsonify(ok=False, error="Client has referrals; reassign before deleting"), 409
-            con.execute("UPDATE client_history SET client_id=NULL WHERE client_id=?", (client_id,))
+            # Keep an audit trail even if client_history.client_id is NOT NULL.
+            con.execute("CREATE TABLE IF NOT EXISTS deleted_client_audit (client_id INTEGER NOT NULL, name TEXT, deleted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, history_json TEXT)")
+            import json
+            history=[dict(x) for x in con.execute("SELECT * FROM client_history WHERE client_id=?", (client_id,)).fetchall()]
+            con.execute("INSERT INTO deleted_client_audit(client_id,name,history_json) VALUES (?,?,?)", (client_id,row["name"],json.dumps(history,ensure_ascii=False,default=str)))
+            con.execute("DELETE FROM client_history WHERE client_id=?", (client_id,))
             con.execute("DELETE FROM clients WHERE id=?", (client_id,))
         return jsonify(ok=True, deleted=client_id, wg_status="unchanged")
