@@ -119,6 +119,24 @@ function syncEditEndDate(){
  end.disabled=false;
  if(!end.value){const months={'1m':1,'6m':6,'12m':12}[period]||1;end.value=addMonthsISO(iso(),months)}
 }
+function dateOffsetISO(base,days){
+ const date=new Date(base+'T00:00:00Z');
+ date.setUTCDate(date.getUTCDate()+days);
+ return date.toISOString().slice(0,10);
+}
+function dateDaysRemaining(end){
+ if(!end)return null;
+ return Math.round((Date.parse(end+'T00:00:00Z')-Date.parse(iso()+'T00:00:00Z'))/86400000);
+}
+function syncEditDays(){
+ const f=$('editForm'),days=$('editDays'),hint=$('editDaysHint'),end=f.elements.end_date;
+ const lifetime=f.elements.period.value==='lifetime';
+ days.disabled=lifetime;
+ if(lifetime){days.value='';hint.textContent='Для ручного изменения дней выберите срочный тариф.';return}
+ const count=dateDaysRemaining(end.value);
+ days.value=count===null?'':String(count);
+ hint.textContent=count===null?'Укажите количество дней. Дата окончания рассчитается автоматически.':'Дата окончания: '+end.value+' · Осталось '+count+' дн.';
+}
 function nextPeerName(){
  const numbers=wg.map(w=>/^(?:CAESAR|CEASER) BOT #(\d+)(?=\s|$)/i.exec(String(w.name||'').trim())).filter(Boolean).map(m=>Number(m[1]));
  return 'CAESAR BOT #'+(Math.max(0,...numbers)+1);
@@ -170,6 +188,7 @@ async function handleClientAction(e){
  }else if(btn.dataset.act==='edit'){
  const f=$('editForm');for(const key of ['id','name','phone','start_date','period','end_date','note'])f.elements[key].value=c[key]??'';
  syncEditEndDate();
+ syncEditDays();
  $('editDialog').showModal();
  requestAnimationFrame(()=>{if(document.activeElement?.blur)document.activeElement.blur()});
  }else if(btn.dataset.act==='wg-toggle'){
@@ -236,7 +255,16 @@ $('closeQr').onclick=()=>$('qrDialog').close();
 $('qrDialog').addEventListener('close',()=>{const d=$('qrDialog');if(d.dataset.objectUrl){URL.revokeObjectURL(d.dataset.objectUrl);delete d.dataset.objectUrl;$('qrImage').removeAttribute('src')}});
 $('closeHistory').onclick=()=>$('historyDialog').close();
 $('closeEdit').onclick=()=>$('editDialog').close();
-$('editForm').elements.period.addEventListener('change',()=>{const f=$('editForm');if(f.elements.period.value!=='lifetime'&&!f.elements.end_date.value)syncEditEndDate();else if(f.elements.period.value==='lifetime')syncEditEndDate()});
+$('editForm').elements.period.addEventListener('change',()=>{syncEditEndDate();syncEditDays()});
+$('editForm').elements.end_date.addEventListener('change',syncEditDays);
+$('editDays').addEventListener('input',()=>{
+ const f=$('editForm'),input=$('editDays');
+ if(f.elements.period.value==='lifetime'||input.value==='')return;
+ const days=Number(input.value);
+ if(!Number.isSafeInteger(days)||days<0||days>36500){$('editDaysHint').textContent='Укажите от 0 до 36500 дней';return}
+ f.elements.end_date.value=dateOffsetISO(iso(),days);
+ $('editDaysHint').textContent='Дата окончания: '+f.elements.end_date.value+' · Осталось '+days+' дн.';
+});
 $('editForm').onsubmit=async e=>{
  e.preventDefault();const d=Object.fromEntries(new FormData(e.currentTarget));const id=Number(d.id);
  delete d.id;
