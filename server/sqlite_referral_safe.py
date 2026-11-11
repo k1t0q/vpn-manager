@@ -18,7 +18,7 @@ def register(app,authorized,db_connect):
         try:
             with db_connect() as con:
                 con.execute("BEGIN IMMEDIATE")
-                con.execute("""CREATE TABLE IF NOT EXISTS sqlite_referral_awards (
+                con.execute("""CREATE TABLE IF NOT EXISTS referral_awards (
                     referred_client_id INTEGER PRIMARY KEY,
                     referrer_client_id INTEGER NOT NULL,
                     bonus_days INTEGER NOT NULL,
@@ -38,13 +38,13 @@ def register(app,authorized,db_connect):
                 if referrer is None:return jsonify(ok=False,error="Referrer not found"),404
                 if referrer["period"]=="lifetime":
                     return jsonify(ok=False,error="Referrer is lifetime; no extension needed"),409
-                existing=con.execute("SELECT bonus_days FROM sqlite_referral_awards WHERE referred_client_id=?",(referred_id,)).fetchone()
+                existing=con.execute("SELECT bonus_days FROM referral_awards WHERE referred_client_id=?",(referred_id,)).fetchone()
                 if existing:return jsonify(ok=False,error="Referral bonus already awarded via this endpoint"),409
                 today=date.today()
                 try:base=max(today,date.fromisoformat(str(referrer["end_date"])[:10]))
                 except (ValueError,TypeError):base=today
                 new_end=(base+timedelta(days=days)).isoformat()
-                con.execute("INSERT INTO sqlite_referral_awards(referred_client_id,referrer_client_id,bonus_days) VALUES(?,?,?)",(referred_id,referrer_id,days))
+                con.execute("INSERT INTO referral_awards(referred_client_id,referrer_client_id,bonus_days) VALUES(?,?,?)",(referred_id,referrer_id,days))
                 con.execute("UPDATE clients SET end_date=? WHERE id=?",(new_end,referrer_id))
                 con.execute("INSERT INTO client_history (user_id,client_id,event_type,description) VALUES (?,?,?,?)",
                     (referrer["user_id"],referrer_id,"referral_bonus","Referral bonus +%s days (selected tariff %s) from client #%s"%(days,selected_period,referred_id)))
