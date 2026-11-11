@@ -167,7 +167,7 @@ $('deleteClient').onclick=async()=>{
  const button=$('deleteClient');
  button.disabled=true;
  try{
-  await call('/api/clients/'+id,{method:'DELETE'});
+  await call('/api/clients/'+id+'/delete',{method:'POST'});
   dialog.close();
   await refresh();
   msg('Клиент «'+c.name+'» удалён вместе с привязанным WireGuard-профилем.');
