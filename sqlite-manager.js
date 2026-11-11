@@ -8,7 +8,32 @@ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const msg=(t,bad=false)=>{$('status').textContent=t;$('status').className=bad?'m-error':'m-ok'};
 const iso=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')};
 const date=s=>s?new Date(s.slice(0,10)+'T12:00:00'):null;
-const remaining=c=>c.end_date?Math.ceil((date(c.end_date)-date(iso()))/86400000):null;
+const remaining=c=>c.period==='lifetime'?null:(c.end_date?Math.ceil((date(c.end_date)-date(iso()))/86400000):null);
+const tariff={'trial':'Пробный — 24 часа','1m':'1 месяц','6m':'6 месяцев','12m':'12 месяцев','lifetime':'Навсегда ∞','imported':'Импорт','1':'1 месяц','6':'6 месяцев','12':'12 месяцев'};
+const formatDate=v=>v?String(v).slice(0,10).split('-').reverse().join('.'):'—';
+function lastSeen(w){
+ const raw=w?.latestHandshakeAt;
+ if(!raw)return 'Никогда';
+ const d=new Date(raw);if(!Number.isFinite(d.getTime())||d.getTime()<=0)return 'Никогда';
+ const mins=Math.max(0,Math.floor((Date.now()-d.getTime())/60000));
+ if(mins<1)return 'только что';
+ if(mins<60)return mins+' мин. назад';
+ if(mins<1440)return Math.floor(mins/60)+' ч. назад';
+ return Math.floor(mins/1440)+' дн. назад';
+}
+function subscriptionStatus(c){
+ if(c.period==='lifetime')return '<span class="status active">Навсегда ∞</span>';
+ const d=remaining(c);
+ if(d===null)return '<span class="status unknown">Без срока</span>';
+ return d<=0?'<span class="status expired">Истекла</span>':d<=7?'<span class="status soon">Скоро</span>':'<span class="status active">Активна</span>';
+}
+function wgDisplay(c){
+ if(!c.wg_client_id)return '<span class="wg-status none">Не привязан</span>';
+ const w=wg.find(x=>String(x.id)===String(c.wg_client_id));
+ if(!w)return '<span class="wg-status off">Не найден</span>';
+ return '<span class="wg-status '+(w.enabled?'on':'off')+'">'+(w.enabled?'● VPN включён':'● VPN отключён')+'</span><small>Последнее подключение: '+esc(lastSeen(w))+'</small>'+(w.address?'<small>IP: '+esc(w.address)+'</small>':'');
+}
+
 async function call(path,opts={}){
  const r=await fetch(API+path,{...opts,headers:{'Content-Type':'application/json',...(token?{'Authorization':'Bearer '+token}:{}),...(opts.headers||{})}});
  let d;try{d=await r.json()}catch{throw Error('Некорректный ответ сервера: '+r.status)}
@@ -25,7 +50,13 @@ function render(){
  $('sTotal').textContent=clients.length;$('sActive').textContent=active;
  $('sSoon').textContent=clients.filter(c=>c.period!=='lifetime'&&remaining(c)>0&&remaining(c)<=7).length;
  $('sExpired').textContent=clients.filter(c=>c.period!=='lifetime'&&remaining(c)!==null&&remaining(c)<=0).length;
- $('rows').innerHTML=shown.map(c=>'<tr><td><b>'+esc(c.name)+'</b><div class="m-muted">'+esc(c.note||'')+'</div></td><td>'+esc(c.phone||'—')+'</td><td>'+esc(c.period)+'</td><td>'+esc(c.end_date||'∞')+'</td><td>'+esc(c.wg_client_id?(wgIds.has(c.wg_client_id)?'Привязан':'Не найден'):'Не привязан')+'</td><td><div class="m-actions"><button data-act="extend" data-id="'+c.id+'" class="secondary">Продлить</button><button data-act="history" data-id="'+c.id+'" class="secondary">История</button>'+'<button data-act="edit" data-id="'+c.id+'" class="secondary">Изменить</button>'+(c.referrer_id?'<button data-act="referral" data-id="'+c.id+'" class="secondary">Бонус рефералу</button>':'')+(!c.wg_client_id?'<button data-act="wg-create" data-id="'+c.id+'">Создать VPN</button>':('<button data-act="wg-toggle" data-id="'+c.id+'" class="secondary">'+(wg.find(w=>w.id===c.wg_client_id)?.enabled?'Отключить':'Включить')+'</button><button data-act="wg-qr" data-id="'+c.id+'" class="secondary">QR</button><button data-act="wg-config" data-id="'+c.id+'" class="secondary">Конфиг</button>'))+'</div></td></tr>').join('');
+ const actions=c=>'<div class="m-actions"><button data-act="extend" data-id="'+c.id+'" class="secondary">Продлить</button><button data-act="edit" data-id="'+c.id+'" class="secondary">Изменить</button><button data-act="history" data-id="'+c.id+'" class="secondary">История</button>'+(c.referrer_id?'<button data-act="referral" data-id="'+c.id+'" class="secondary">Бонус рефералу</button>':'')+(!c.wg_client_id?'<button data-act="wg-create" data-id="'+c.id+'">Создать VPN</button>':('<button data-act="wg-toggle" data-id="'+c.id+'" class="secondary">'+(wg.find(w=>String(w.id)===String(c.wg_client_id))?.enabled?'Отключить VPN':'Включить VPN')+'</button><button data-act="wg-qr" data-id="'+c.id+'" class="secondary">QR</button><button data-act="wg-config" data-id="'+c.id+'" class="secondary">Конфиг</button>'))+'</div>';
+ const remain=c=>c.period==='lifetime'?'∞':remaining(c)===null?'—':String(remaining(c));
+ const label=c=>esc(tariff[c.period]||c.period||'—');
+ const referred=c=>esc(clients.find(x=>String(x.id)===String(c.referrer_id))?.name||'—');
+ $('rows').innerHTML=shown.map(c=>'<tr><td><b>'+esc(c.name)+'</b>'+(c.note?'<small>'+esc(c.note)+'</small>':'')+'</td><td>'+esc(c.phone||'—')+'</td><td>'+referred(c)+'</td><td>'+wgDisplay(c)+'</td><td>'+label(c)+'</td><td>'+formatDate(c.start_date)+'</td><td>'+ (c.period==='lifetime'?'Навсегда':formatDate(c.end_date))+'</td><td><b>'+remain(c)+'</b></td><td>'+subscriptionStatus(c)+'</td><td>'+actions(c)+'</td></tr>').join('');
+ $('cards').innerHTML=shown.map(c=>'<article class="card"><div class="card-top"><div><h3>'+esc(c.name)+'</h3><small>'+esc(c.phone||'')+'</small></div>'+subscriptionStatus(c)+'</div><div class="info"><div><small>Тариф</small><b>'+label(c)+'</b></div><div><small>До</small><b>'+(c.period==='lifetime'?'Навсегда':formatDate(c.end_date))+'</b></div><div><small>Осталось</small><b>'+remain(c)+' дн.</b></div></div>'+(c.referrer_id?'<div class="note">Пригласил: '+referred(c)+'</div>':'')+'<div class="note">'+wgDisplay(c)+'</div><details class="manage"><summary>Управление подпиской</summary><div class="manage-body">'+actions(c)+'</div></details></article>').join('');
+ $('empty').classList.toggle('hidden',shown.length>0);
  const current=$('referrer').value;
  $('referrer').innerHTML='<option value="">Никто</option>'+clients.map(c=>'<option value="'+c.id+'">'+esc(c.name)+'</option>').join('');
  $('referrer').value=current;
