@@ -289,7 +289,7 @@ $('siteNotifications').addEventListener('toggle',e=>{if(e.target.matches('.atten
 $('siteNotifications').addEventListener('click',e=>{
  const button=e.target.closest('button[data-jump-client]');if(!button)return;
  const id=button.dataset.jumpClient;
- $('search').value='';$('filter').value='all';render();
+ $('search').value='';const targetClient=clients.find(c=>String(c.id)===id);$('filter').value=targetClient&&targetClient.period!=='lifetime'&&remaining(targetClient)<=0?'expired':'active';render();
  const mobile=window.matchMedia('(max-width:900px)').matches;
  const container=mobile?$('cards'):$('rows');
  const target=Array.from(container.querySelectorAll('[data-client-id]')).find(el=>el.dataset.clientId===id);
