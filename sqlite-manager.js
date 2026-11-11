@@ -61,7 +61,18 @@ function render(){
  $('sTotal').textContent=clients.length;$('sActive').textContent=active;
  $('sSoon').textContent=clients.filter(c=>c.period!=='lifetime'&&remaining(c)>0&&remaining(c)<=7).length;
  $('sExpired').textContent=clients.filter(c=>c.period!=='lifetime'&&remaining(c)!==null&&remaining(c)<=0).length;
- const actions=c=>'<div class="m-actions"><button data-act="extend" data-id="'+c.id+'" class="secondary">Продлить</button><button data-act="edit" data-id="'+c.id+'" class="secondary">Изменить</button><button data-act="history" data-id="'+c.id+'" class="secondary">История</button>'+(c.referrer_id?'<button data-act="referral" data-id="'+c.id+'" class="secondary">Бонус рефералу</button>':'')+(!c.wg_client_id?'<button data-act="wg-create" data-id="'+c.id+'">Создать VPN</button>':('<button data-act="wg-toggle" data-id="'+c.id+'" class="secondary">'+(wg.find(w=>String(w.id)===String(c.wg_client_id))?.enabled?'Отключить VPN':'Включить VPN')+'</button><button data-act="wg-qr" data-id="'+c.id+'" class="secondary">QR</button><button data-act="wg-config" data-id="'+c.id+'" class="secondary">Конфиг</button>'))+'</div>';
+ const actions=c=>{
+ const peer=wg.find(w=>String(w.id)===String(c.wg_client_id));
+ const hasWg=!!c.wg_client_id;
+ return '<div class="m-actions client-actions">'
+ +'<button data-act="extend" data-id="'+c.id+'" class="secondary">Продлить</button>'
+ +'<button data-act="edit" data-id="'+c.id+'" class="secondary">Изменить</button>'
+ +(hasWg?'<button data-act="wg-qr" data-id="'+c.id+'" class="secondary">QR</button><button data-act="wg-config" data-id="'+c.id+'" class="secondary">Конфиг</button>':'<button data-act="wg-create" data-id="'+c.id+'">Создать VPN</button><span></span>')
+ +(hasWg?'<button data-act="wg-toggle" data-id="'+c.id+'" class="warning">'+(peer?.enabled?'Отключить':'Включить')+'</button>':'<span></span>')
+ +'<button data-act="delete" data-id="'+c.id+'" class="danger">Удалить</button>'
+ +(c.referrer_id?'<button data-act="referral" data-id="'+c.id+'" class="secondary referral-action">Бонус рефералу</button>':'')
+ +'</div>';
+};
  const remain=c=>c.period==='lifetime'?'∞':remaining(c)===null?'—':String(remaining(c));
  const label=c=>esc(tariff[c.period]||c.period||'—');
  const referred=c=>esc(clients.find(x=>String(x.id)===String(c.referrer_id))?.name||'—');
@@ -99,6 +110,14 @@ await refresh()}catch(e){msg(e.message,true)}
 async function handleClientAction(e){
  const btn=e.target.closest('button[data-act]');if(!btn)return;
  const id=Number(btn.dataset.id),c=clients.find(x=>Number(x.id)===id);if(!c)return;
+ if(btn.dataset.act==='delete'){
+  if(!confirm('Удалить клиента «'+c.name+'»?\\n\\nБудут удалены запись из VPN MANAGER и привязанный профиль WireGuard.'))return;
+  btn.disabled=true;
+  try{await call('/api/clients/'+id+'/delete',{method:'POST'});await refresh();msg('Клиент «'+c.name+'» удалён вместе с WireGuard-профилем')}
+  catch(err){const message='Не удалось удалить клиента: '+err.message;msg(message,true);alert(message)}
+  finally{btn.disabled=false}
+  return;
+ }
  try{
  if(btn.dataset.act==='referral'){
  const ref=clients.find(x=>String(x.id)===String(c.referrer_id));
@@ -158,25 +177,6 @@ $('closeQr').onclick=()=>$('qrDialog').close();
 $('qrDialog').addEventListener('close',()=>{const d=$('qrDialog');if(d.dataset.objectUrl){URL.revokeObjectURL(d.dataset.objectUrl);delete d.dataset.objectUrl;$('qrImage').removeAttribute('src')}});
 $('closeHistory').onclick=()=>$('historyDialog').close();
 $('closeEdit').onclick=()=>$('editDialog').close();
-$('deleteClient').onclick=async()=>{
- const dialog=$('editDialog');
- const id=Number($('editForm').querySelector('input[name="id"]')?.value);
- const c=clients.find(x=>Number(x.id)===id);
- if(!c){alert('Не удалось определить клиента. Закройте окно и откройте его заново.');return}
- if(!confirm('Удалить клиента «'+c.name+'»?\n\nБудут удалены запись из VPN MANAGER и привязанный профиль WireGuard. Это действие нельзя отменить.'))return;
- const button=$('deleteClient');
- button.disabled=true;
- try{
-  await call('/api/clients/'+id+'/delete',{method:'POST'});
-  dialog.close();
-  await refresh();
-  msg('Клиент «'+c.name+'» удалён вместе с привязанным WireGuard-профилем.');
- }catch(err){
-  const message='Не удалось удалить клиента: '+err.message;
-  msg(message,true);
-  alert(message);
- }finally{button.disabled=false}
-};
 $('editForm').onsubmit=async e=>{
  e.preventDefault();const d=Object.fromEntries(new FormData(e.currentTarget));const id=Number(d.id);
  if(d.period==='lifetime')d.end_date=null;
