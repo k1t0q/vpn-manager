@@ -216,6 +216,8 @@ async function handleClientAction(e){
   const qr=$('qrImage');qr.src=url;
   $('qrTitle').textContent='QR - '+peerLabel(c);
   $('qrDialog').dataset.peerName=peerLabel(c)||'WireGuard';
+  $('qrDialog').dataset.tariff=tariff[c.period]||c.period||'—';
+  $('qrDialog').dataset.expires=c.period==='lifetime'?'Бессрочно ∞':formatDate(c.end_date);
   $('qrDialog').showModal();
   $('qrDialog').dataset.objectUrl=url;
   return;
@@ -269,19 +271,41 @@ $('shareQr').onclick=async()=>{
  try{
   const name=dialog.dataset.peerName||'WireGuard';
   const canvas=document.createElement('canvas');
-  canvas.width=840;canvas.height=1000;
+  canvas.width=900;canvas.height=1210;
   const ctx=canvas.getContext('2d');
-  ctx.fillStyle='#ffffff';ctx.fillRect(0,0,840,1000);
-  ctx.fillStyle='#182234';ctx.textAlign='center';
-  ctx.font='bold 40px Arial,sans-serif';ctx.fillText('WireGuard · VPN',420,82);
-  ctx.font='28px Arial,sans-serif';
+  const round=(x,y,w,h,r,fill,stroke)=>{
+   ctx.beginPath();ctx.roundRect(x,y,w,h,r);
+   if(fill){ctx.fillStyle=fill;ctx.fill()}
+   if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=2;ctx.stroke()}
+  };
+  const text=(str,x,y,font,color,align='left')=>{ctx.font=font;ctx.fillStyle=color;ctx.textAlign=align;ctx.fillText(str,x,y)};
+  const bg=ctx.createLinearGradient(0,0,900,1210);
+  bg.addColorStop(0,'#192537');bg.addColorStop(1,'#0b121e');
+  ctx.fillStyle=bg;ctx.fillRect(0,0,900,1210);
+  ctx.strokeStyle='rgba(70,224,178,.12)';ctx.lineWidth=2;
+  ctx.beginPath();ctx.arc(870,40,260,0,Math.PI*2);ctx.stroke();
+  ctx.beginPath();ctx.arc(870,40,330,0,Math.PI*2);ctx.stroke();
+  round(56,54,8,64,4,'#49d7ad');
+  text('VPN MANAGER',88,90,'bold 44px Arial,sans-serif','#f5f9ff');
+  text('PRIVATE WIREGUARD ACCESS',88,124,'18px Arial,sans-serif','#9cacc2');
+  round(56,160,788,98,18,'#202e40','#34465a');
+  text('CAESAR BOT #',80,197,'bold 21px Arial,sans-serif','#53ddb4');
   const label=name.length>36?name.slice(0,35)+'…':name;
-  ctx.fillText(label,420,132);
-  ctx.drawImage(img,100,185,640,640);
-  ctx.font='22px Arial,sans-serif';ctx.fillStyle='#555e6b';
-  ctx.fillText('Сканируйте QR-код в приложении WireGuard',420,895);
+  text(label,80,235,'bold 32px Arial,sans-serif','#ffffff');
+  round(56,284,788,646,24,'#ffffff');
+  ctx.imageSmoothingEnabled=false;
+  ctx.drawImage(img,136,318,628,580);
+  ctx.imageSmoothingEnabled=true;
+  round(56,954,382,126,18,'#202e40','#34465a');
+  round(462,954,382,126,18,'#202e40','#34465a');
+  text('ТАРИФ',82,997,'bold 18px Arial,sans-serif','#9caec3');
+  text('ДЕЙСТВУЕТ ДО',488,997,'bold 18px Arial,sans-serif','#9caec3');
+  const tariffLabel=dialog.dataset.tariff||'—',expires=dialog.dataset.expires||'—';
+  text(tariffLabel.length>22?tariffLabel.slice(0,21)+'…':tariffLabel,82,1045,'bold 29px Arial,sans-serif','#f5f9ff');
+  text(expires,488,1045,'bold 29px Arial,sans-serif','#f5f9ff');
+  text('Сканируйте код в приложении WireGuard',450,1140,'22px Arial,sans-serif','#b7c6d9','center');
   const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('Не удалось создать изображение')),'image/png'));
-  const file=new File([blob],'WireGuard-QR.png',{type:'image/png'});
+  const file=new File([blob],'CAESAR-BOT-QR.png',{type:'image/png'});
   if(navigator.share&&(!navigator.canShare||navigator.canShare({files:[file]}))){
    try{await navigator.share({files:[file],title:'WireGuard VPN'});return}
    catch(e){if(e.name==='AbortError')return}
