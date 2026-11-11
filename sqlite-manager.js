@@ -140,15 +140,30 @@ async function handleClientAction(e){
  const isQr=btn.dataset.act==='wg-qr';
  const response=await fetch(API+'/api/wg/client/'+encodeURIComponent(c.wg_client_id)+'/'+(isQr?'qr':'config'),{headers:{Authorization:'Bearer '+token}});
  if(!response.ok)throw Error('Не удалось получить '+(isQr?'QR':'конфигурацию')+': HTTP '+response.status);
- const blob=await response.blob(),url=URL.createObjectURL(blob);
+ const blob=await response.blob();
  if(isQr){
+  const url=URL.createObjectURL(blob);
   const qr=$('qrImage');qr.src=url;
   $('qrTitle').textContent='QR — '+c.name;
   $('qrDialog').showModal();
   $('qrDialog').dataset.objectUrl=url;
   return;
- }else{const link=document.createElement('a');link.href=url;link.download=(c.name||'wireguard').replace(/[^a-z0-9_-]/gi,'_')+'.conf';link.click()}
- setTimeout(()=>URL.revokeObjectURL(url),60000);
+ }
+ const fileName=(c.name||'wireguard').replace(/[^a-z0-9_-]/gi,'_')+'.conf';
+ const file=new File([blob],fileName,{type:'application/octet-stream'});
+ if(typeof navigator.share==='function'&&typeof navigator.canShare==='function'&&navigator.canShare({files:[file]})){
+  try{
+   await navigator.share({files:[file]});
+   msg('Конфигурация передана в меню отправки');
+  }catch(err){
+   if(err?.name!=='AbortError')throw Error('Не удалось открыть отправку файла: '+err.message);
+  }
+ }else{
+  if(!confirm('Это устройство не поддерживает отправку файла через меню «Поделиться». Скачать конфигурацию вместо этого?'))return;
+  const url=URL.createObjectURL(blob);
+  const link=document.createElement('a');link.href=url;link.download=fileName;document.body.appendChild(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+ }
  }else if(btn.dataset.act==='wg-create'){
  if(!confirm('Создать WireGuard-профиль для '+c.name+' и привязать к SQLite?'))return;
  const result=await call('/api/wg/client',{method:'POST',body:JSON.stringify({name:c.name})});
