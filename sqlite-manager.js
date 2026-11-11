@@ -277,8 +277,12 @@ $('editForm').onsubmit=async e=>{
  delete d.id;
  delete d.note;
  d.referrer_id=d.referrer_id?Number(d.referrer_id):null;
- if(d.period='lifetime')d.end_date=null;
- else if(!d.end_date){d.end_date=addMonthsISO(iso(),{'1m':1,'6m':6,'12m':12}[d.period]||1)}
+ if(d.period==='lifetime')d.end_date=null;
+ else {
+  if(!['1m','6m','12m'].includes(d.period)){alert('Некорректный тариф. Изменения не сохранены.');return}
+  if(!d.end_date){alert('Укажите дату окончания подписки. Изменения не сохранены.');return}
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d.end_date)||!Number.isFinite(Date.parse(d.end_date+'T00:00:00Z'))){alert('Некорректная дата окончания.');return}
+ }
  try{await call('/api/clients/'+id,{method:'PATCH',body:JSON.stringify(d)});$('editDialog').close();await refresh();msg('Клиент обновлён')}
  catch(err){const message='Не удалось сохранить изменения: '+err.message;msg(message,true);alert(message)}
 };
