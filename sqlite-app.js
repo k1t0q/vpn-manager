@@ -313,11 +313,12 @@ $("addForm").addEventListener("submit",async e=>{
   let wgClientId=null;
   try{
     const createVpnEl=$("createVpn");
-    if(!createVpnEl || createVpnEl.checked){
+    if(false && (!createVpnEl || createVpnEl.checked)){
       const x=await apiJson("/api/wg/client",{method:"POST",body:JSON.stringify({name:$("name").value.trim()})});
       wgClientId=x.client?.id||null;
       if(!wgClientId)throw new Error("Не получен ID WireGuard");
     }
+    if(!["1m","6m","12m","lifetime"].includes(p))throw new Error("Этот тариф ещё не поддерживается SQLite API");
     const payload={user_id:session.user.id,name:$("name").value.trim(),phone:$("phone").value.trim(),start_date:start,end_date:p==="lifetime"?null:addPeriod(start,p),period:p,note:$("note").value.trim(),referrer_id:referrerId,wg_client_id:wgClientId};
     const {data:created,error}=await sb.from("clients").insert(payload).select("id").single();if(error)throw error; if(created?.id)await logHistory(created.id,"created","Клиент создан");
 
@@ -352,12 +353,12 @@ document.addEventListener("click",async e=>{
     }
     if(a==="extend"){
       const scope=b.closest(".actions,.manage-body"),sel=scope.querySelector(`[data-sel="${id}"]`),p=sel.value;
-      const base=(days(c.end_date)!==null&&days(c.end_date)>0)?c.end_date:today(),newEnd=p==="lifetime"?null:addPeriod(base,p);
-      const{error}=await sb.from("clients").update({end_date:newEnd,period:p}).eq("id",id);if(error)throw error;
-      if(c.wg_client_id)await api(`/api/wg/client/${c.wg_client_id}/enable`,{method:"POST"});
-      await logHistory(id,"extended",`Подписка продлена: ${labels[p]||p}${p==="lifetime"?" ∞":", до "+fmt(newEnd)}; VPN включён`);msg("Подписка продлена, VPN включён");return load();
+      if(!["1m","6m","12m","lifetime"].includes(p))throw Error("Этот тариф пока не поддерживается сервером");const newEnd=null;
+      const x=await apiJson(`/api/clients/${id}/extend`,{method:"POST",body:JSON.stringify({period:p})});if(!x.ok)throw Error(x.error||"Не удалось продлить");
+      
+      msg("Подписка продлена в SQLite");return load();
     }
-    if(a==="wg-create"){
+    if(a==="wg-create"){throw Error("Создание WireGuard временно заблокировано: API возвращает 401");
       const x=await apiJson("/api/wg/client",{method:"POST",body:JSON.stringify({name:c.name})});
       const wid=x.client?.id;if(!wid)throw new Error("Не получен ID WireGuard");
       const{error}=await sb.from("clients").update({wg_client_id:wid}).eq("id",id);if(error)throw error;await logHistory(id,"wg_created","Создан WireGuard-профиль");msg("WireGuard создан");return load();
@@ -402,7 +403,7 @@ if($("pushBtn")){$("pushBtn").disabled=true;$("pushStatus").textContent="Push в
 $("closeEdit").onclick=()=>$("editDialog").close();
 if($("editPeriod"))$("editPeriod").onchange=()=>{const life=$("editPeriod").value==="lifetime";$("editDaysLeft").disabled=life;if(life)$("editDaysLeft").value=""};
 $("closeHistory").onclick=()=>$("historyDialog").close();
-$("attentionBtn").onclick=()=>{attentionOnly=!attentionOnly;$("attentionBtn").classList.toggle("attention-active",attentionOnly);$("attentionBtn").firstChild.textContent=attentionOnly?"← Все клиенты ":"⚠ Требуют внимания ";render()};$("search").oninput=render;if($("clientFilter"))$("clientFilter").onchange=e=>{clientFilter=e.target.value;render()};$("refreshBtn").onclick=load;if($("importWgBtn")){$("importWgBtn").disabled=true;$("importWgBtn").title="Импорт уже выполнен: 59 клиентов";}$("startDate").onchange=preview;$("period").onchange=()=>{preview();updateReferralHint()};$("referrer").onchange=updateReferralHint;$("logoutBtn").onclick=()=>sb.auth.signOut();
+$("attentionBtn").onclick=()=>{attentionOnly=!attentionOnly;$("attentionBtn").classList.toggle("attention-active",attentionOnly);$("attentionBtn").firstChild.textContent=attentionOnly?"← Все клиенты ":"⚠ Требуют внимания ";render()};$("search").oninput=render;if($("clientFilter"))$("clientFilter").onchange=e=>{clientFilter=e.target.value;render()};$("refreshBtn").onclick=load;if($("createVpn")){$("createVpn").checked=false;$("createVpn").disabled=true;}if($("importWgBtn")){$("importWgBtn").disabled=true;$("importWgBtn").title="Импорт уже выполнен: 59 клиентов";}$("startDate").onchange=preview;$("period").onchange=()=>{preview();updateReferralHint()};$("referrer").onchange=updateReferralHint;$("logoutBtn").onclick=()=>sb.auth.signOut();
 $("loginForm").addEventListener("submit",async e=>{e.preventDefault();const{error}=await sb.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});$("authMessage").textContent=error?("Ошибка входа: "+error.message):""});
 sb.auth.onAuthStateChange(async(_e,s)=>{session=s;const yes=!!s;$("authScreen").classList.toggle("hidden",yes);$("app").classList.toggle("hidden",!yes);if(yes){$("startDate").value=today();$("period").value="1m";preview();await load();updateReferralHint()}});
 (async()=>{const{data}=await sb.auth.getSession();session=data.session;const yes=!!session;$("authScreen").classList.toggle("hidden",yes);$("app").classList.toggle("hidden",!yes);if(yes){$("startDate").value=today();$("period").value="1m";preview();await load();updateReferralHint()}})();
