@@ -287,7 +287,7 @@ $('shareQr').onclick=async()=>{
   ctx.beginPath();ctx.arc(870,40,330,0,Math.PI*2);ctx.stroke();
   round(56,54,8,62,4,'#49d7ad');
   const label=name.length>34?name.slice(0,33)+'…':name;
-  text(/^CAESAR BOT/i.test(label)?label:'CAESAR BOT',88,104,'bold 44px Arial,sans-serif','#f5f9ff');
+  text(label.replace(/^CEASER\s+BOT/i,'CAESAR BOT'),88,104,'bold 44px Arial,sans-serif','#f5f9ff');
   round(56,146,788,784,24,'#ffffff');
   ctx.imageSmoothingEnabled=false;
   ctx.drawImage(img,84,160,732,732);
@@ -302,8 +302,9 @@ $('shareQr').onclick=async()=>{
   text('Сканируйте код в приложении WireGuard',450,1140,'22px Arial,sans-serif','#b7c6d9','center');
   const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('Не удалось создать изображение')),'image/png'));
   const file=new File([blob],'CAESAR-BOT-QR.png',{type:'image/png'});
-  const botId=/CAESAR BOT #\d+/i.test(name)?name.match(/CAESAR BOT #\d+/i)[0]:name;
-  const shareText=(/^CAESAR BOT #/i.test(botId)?botId:'CAESAR BOT # — '+botId)+'\nВаш QR-код для подключения VPN через WireGuard.\nТариф: '+(dialog.dataset.tariff||'—')+'\nДействует до: '+(dialog.dataset.expires||'—');
+  const match=name.match(/(?:CAESAR|CEASER)\s+BOT\s*#\s*(\d+)/i);
+  const botId=match?'CAESAR BOT #'+match[1]:name;
+  const shareText=botId+'\nВаш QR-код для подключения VPN через WireGuard.\nТариф: '+(dialog.dataset.tariff||'—')+'\nДействует до: '+(dialog.dataset.expires||'—');
   if(navigator.share&&(!navigator.canShare||navigator.canShare({files:[file]}))){
    try{await navigator.share({files:[file],title:'CAESAR BOT #',text:shareText});return}
    catch(e){if(e.name==='AbortError')return}
