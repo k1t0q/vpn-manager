@@ -74,7 +74,12 @@ function render(){
 }
 async function refresh(){
  const [a,b]=await Promise.all([call('/api/clients'),call('/api/wg/clients').catch(e=>({clients:[],error:e.message}))]);
- clients=dataList(a);wg=b.clients||[];render();
+ clients=dataList(a);
+ clients.sort((a,b)=>{
+  const ad=Date.parse(a.created_at||'')||0,bd=Date.parse(b.created_at||'')||0;
+  return bd-ad || Number(b.id||0)-Number(a.id||0);
+ });
+ wg=b.clients||[];render();
  msg(b.error?'Клиенты загружены, WireGuard недоступен: '+b.error:'Данные обновлены',!!b.error);
 }
 $('login').onsubmit=async e=>{
