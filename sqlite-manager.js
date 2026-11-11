@@ -294,7 +294,7 @@ $('shareQr').onclick=async()=>{
   text(label,80,235,'bold 32px Arial,sans-serif','#ffffff');
   round(56,284,788,646,24,'#ffffff');
   ctx.imageSmoothingEnabled=false;
-  ctx.drawImage(img,136,318,628,580);
+  ctx.drawImage(img,160,326,580,580);
   ctx.imageSmoothingEnabled=true;
   round(56,954,382,126,18,'#202e40','#34465a');
   round(462,954,382,126,18,'#202e40','#34465a');
