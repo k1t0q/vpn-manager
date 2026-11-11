@@ -187,6 +187,9 @@ async function handleClientAction(e){
  await refresh();msg('Начислено +'+r.bonus_days+' дней клиенту '+ref.name);
  }else if(btn.dataset.act==='edit'){
  const f=$('editForm');for(const key of ['id','name','phone','start_date','period','end_date','note'])f.elements[key].value=c[key]??'';
+ const inviter=$('editReferrer');
+ inviter.innerHTML='<option value="">Никто</option>'+clients.filter(x=>String(x.id)!==String(c.id)).map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join('');
+ inviter.value=c.referrer_id==null?'':String(c.referrer_id);
  syncEditEndDate();
  syncEditDays();
  $('editDialog').showModal();
@@ -268,7 +271,8 @@ $('editDays').addEventListener('input',()=>{
 $('editForm').onsubmit=async e=>{
  e.preventDefault();const d=Object.fromEntries(new FormData(e.currentTarget));const id=Number(d.id);
  delete d.id;
- if(d.period==='lifetime')d.end_date=null;
+ d.referrer_id=d.referrer_id?Number(d.referrer_id):null;
+ if(d.period='lifetime')d.end_date=null;
  else if(!d.end_date){d.end_date=addMonthsISO(iso(),{'1m':1,'6m':6,'12m':12}[d.period]||1)}
  try{await call('/api/clients/'+id,{method:'PATCH',body:JSON.stringify(d)});$('editDialog').close();await refresh();msg('Клиент обновлён')}
  catch(err){const message='Не удалось сохранить изменения: '+err.message;msg(message,true);alert(message)}
