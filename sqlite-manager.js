@@ -77,7 +77,7 @@ function render(){
  const label=c=>esc(tariff[c.period]||c.period||'—');
  const referred=c=>esc(clients.find(x=>String(x.id)===String(c.referrer_id))?.name||'—');
  $('rows').innerHTML=shown.map(c=>'<tr data-client-id="'+c.id+'"><td><b>'+esc(c.name)+'</b>'+(c.note?'<small>'+esc(c.note)+'</small>':'')+'</td><td>'+esc(c.phone||'—')+'</td><td>'+referred(c)+'</td><td>'+wgDisplay(c)+'</td><td>'+label(c)+'</td><td>'+formatDate(c.start_date)+'</td><td>'+ (c.period==='lifetime'?'Навсегда':formatDate(c.end_date))+'</td><td><b>'+remain(c)+'</b></td><td>'+subscriptionStatus(c)+'</td><td>'+actions(c)+'</td></tr>').join('');
- $('cards').innerHTML=shown.map(c=>'<article class="card" data-client-id="'+c.id+'"><div class="card-top"><div><h3 class="card-vpn-name">'+esc(wg.find(w=>String(w.id)===String(c.wg_client_id))?.name||c.name)+'</h3>'+(wg.find(w=>String(w.id)===String(c.wg_client_id))?.name&&wg.find(w=>String(w.id)===String(c.wg_client_id))?.name!==c.name?'<div class="card-client-name">'+esc(c.name)+'</div>':'')+(c.phone?'<small>'+esc(c.phone)+'</small>':'')+'</div>'+subscriptionStatus(c)+'</div><div class="info"><div><small>Тариф</small><b>'+label(c)+'</b></div><div><small>До</small><b>'+(c.period==='lifetime'?'Навсегда':formatDate(c.end_date))+'</b></div><div><small>Осталось</small><b>'+remain(c)+' дн.</b></div></div>'+(c.referrer_id?'<div class="note">Пригласил: '+referred(c)+'</div>':'')+'<div class="note">'+wgDisplay(c)+'</div><details class="manage" open><summary>Управление подпиской</summary><div class="manage-body">'+actions(c)+'</div></details></article>').join('');
+ $('cards').innerHTML=shown.map(c=>'<article class="card" data-client-id="'+c.id+'"><div class="card-top"><div><h3 class="card-vpn-name">'+esc(peerLabel(c))+'</h3><div class="card-client-name">'+esc(c.name)+'</div>'+(c.phone?'<small>'+esc(c.phone)+'</small>':'')+'</div>'+subscriptionStatus(c)+'</div><div class="info"><div><small>Тариф</small><b>'+label(c)+'</b></div><div><small>До</small><b>'+(c.period==='lifetime'?'Навсегда':formatDate(c.end_date))+'</b></div><div><small>Осталось</small><b>'+remain(c)+' дн.</b></div></div>'+(c.referrer_id?'<div class="note">Пригласил: '+referred(c)+'</div>':'')+'<div class="note">'+wgDisplay(c)+'</div><details class="manage" open><summary>Управление подпиской</summary><div class="manage-body">'+actions(c)+'</div></details></article>').join('');
  $('empty').classList.toggle('hidden',shown.length>0);
  const current=$('referrer').value;
  $('referrer').innerHTML='<option value="">Никто</option>'+clients.map(c=>'<option value="'+c.id+'">'+esc(c.name)+'</option>').join('');
@@ -100,9 +100,14 @@ $('login').onsubmit=async e=>{
  $('code').value='';await refresh();$('loginPane').classList.add('m-hide');$('workspace').classList.remove('m-hide');
  }catch(e){token='';localStorage.removeItem(TOKEN_KEY);msg('Ошибка входа: '+e.message,true)}
 };
+function peerLabel(c){
+ const raw=wg.find(w=>String(w.id)===String(c.wg_client_id))?.name||'';
+ const match=String(raw).trim().match(/^((?:CAESAR|CEASER) BOT #\d+)(?=\s|$)/i);
+ return match?match[1]:(raw||c.name);
+}
 function nextPeerName(){
- const numbers=wg.map(w=>/^CEASER BOT #(\d+)$/i.exec(String(w.name||'').trim())).filter(Boolean).map(m=>Number(m[1]));
- return 'CEASER BOT #'+(Math.max(0,...numbers)+1);
+ const numbers=wg.map(w=>/^(?:CAESAR|CEASER) BOT #(\d+)(?=\s|$)/i.exec(String(w.name||'').trim())).filter(Boolean).map(m=>Number(m[1]));
+ return 'CAESAR BOT #'+(Math.max(0,...numbers)+1);
 }
 $('create').onsubmit=async e=>{
  e.preventDefault();
@@ -171,7 +176,7 @@ async function handleClientAction(e){
   $('qrDialog').dataset.objectUrl=url;
   return;
  }
- const peerName=wg.find(w=>String(w.id)===String(c.wg_client_id))?.name||'WireGuard';
+ const peerName=peerLabel(c)||'WireGuard';
  const fileName=peerName.replace(/[\\/:*?"<>|\x00-\x1f]/g,'_').trim()+'.conf';
  const file=new File([blob],fileName,{type:'application/octet-stream'});
  if(typeof navigator.share==='function'&&typeof navigator.canShare==='function'&&navigator.canShare({files:[file]})){
