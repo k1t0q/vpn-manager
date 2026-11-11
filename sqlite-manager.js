@@ -118,7 +118,7 @@ $('noticePreview').onclick=()=>{
  $('noticeDialog').showModal();
 };
 $('closeNotices').onclick=()=>$('noticeDialog').close();
-\n$('reload').onclick=()=>refresh().catch(e=>msg(e.message,true));
+$('reload').onclick=()=>refresh().catch(e=>msg(e.message,true));
 $('search').oninput=render;$('filter').onchange=render;
 $('logout').onclick=async()=>{try{await call('/auth/logout',{method:'POST'})}catch{}token='';localStorage.removeItem(TOKEN_KEY);clients=[];wg=[];$('workspace').classList.add('m-hide');$('loginPane').classList.remove('m-hide');msg('Выход выполнен')};
 $('create').elements.start_date.value=iso();
