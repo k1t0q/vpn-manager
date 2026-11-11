@@ -117,7 +117,7 @@ function syncEditEndDate(){
  const f=$('editForm'),period=f.elements.period.value,end=f.elements.end_date;
  if(period==='lifetime'){end.disabled=true;end.value='';return}
  end.disabled=false;
- if(!end.value){const months={'1m':1,'6m':6,'12m':12}[period]||1;end.value=addMonthsISO(f.elements.start_date.value||iso(),months)}
+ if(!end.value){const months={'1m':1,'6m':6,'12m':12}[period]||1;end.value=addMonthsISO(iso(),months)}
 }
 function nextPeerName(){
  const numbers=wg.map(w=>/^(?:CAESAR|CEASER) BOT #(\d+)(?=\s|$)/i.exec(String(w.name||'').trim())).filter(Boolean).map(m=>Number(m[1]));
@@ -226,6 +226,7 @@ async function handleClientAction(e){
  $('extendPeriod').value=['1m','6m','12m','lifetime'].includes(c.period)?c.period:'1m';
  dialog.dataset.clientId=String(id);
  dialog.showModal();
+ requestAnimationFrame(()=>{dialog.focus({preventScroll:true})});
  }
  }catch(e){msg(e.message,true)}
 }
@@ -240,7 +241,7 @@ $('editForm').onsubmit=async e=>{
  e.preventDefault();const d=Object.fromEntries(new FormData(e.currentTarget));const id=Number(d.id);
  delete d.id;
  if(d.period==='lifetime')d.end_date=null;
- else if(!d.end_date){d.end_date=addMonthsISO(d.start_date||iso(),{'1m':1,'6m':6,'12m':12}[d.period]||1)}
+ else if(!d.end_date){d.end_date=addMonthsISO(iso(),{'1m':1,'6m':6,'12m':12}[d.period]||1)}
  try{await call('/api/clients/'+id,{method:'PATCH',body:JSON.stringify(d)});$('editDialog').close();await refresh();msg('Клиент обновлён')}
  catch(err){const message='Не удалось сохранить изменения: '+err.message;msg(message,true);alert(message)}
 };
