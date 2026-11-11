@@ -352,3 +352,16 @@ $('extendForm').addEventListener('submit',async e=>{
  finally{button.disabled=false}
 });
 })();
+
+
+// Mobile header actions reuse the existing desktop handlers.
+for(const [mobile,desktop] of [['mobileReload','reload'],['mobileExport','exportCsv'],['mobileLogout','logout']]){
+ const button=$(mobile);
+ if(button)button.addEventListener('click',()=>$(desktop).click());
+}
+const mobileActions=$('mobileHeaderActions');
+if(mobileActions){
+ const syncMobileActions=()=>{mobileActions.hidden=$('workspace').classList.contains('m-hide')};
+ new MutationObserver(syncMobileActions).observe($('workspace'),{attributes:true,attributeFilter:['class']});
+ syncMobileActions();
+}
