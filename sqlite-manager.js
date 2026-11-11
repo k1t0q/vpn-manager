@@ -12,9 +12,9 @@ const remaining=c=>c.period==='lifetime'?null:(c.end_date?Math.ceil((date(c.end_
 const tariff={'trial':'Пробный — 24 часа','1m':'1 месяц','6m':'6 месяцев','12m':'12 месяцев','lifetime':'Навсегда ∞','imported':'Импорт','1':'1 месяц','6':'6 месяцев','12':'12 месяцев'};
 const formatDate=v=>v?String(v).slice(0,10).split('-').reverse().join('.'):'—';
 function lastSeen(w){
- const raw=w?.latestHandshakeAt;
+ const raw=w?.latestHandshakeAt ?? w?.latestHandshake ?? w?.latest_handshake_at;
  if(!raw)return 'Никогда';
- const d=new Date(raw);if(!Number.isFinite(d.getTime())||d.getTime()<=0)return 'Никогда';
+ const d=new Date(typeof raw==='number'?(raw<1e12?raw*1000:raw):raw);if(!Number.isFinite(d.getTime())||d.getTime()<=0)return 'Никогда';
  const mins=Math.max(0,Math.floor((Date.now()-d.getTime())/60000));
  if(mins<1)return 'только что';
  if(mins<60)return mins+' мин. назад';
@@ -41,10 +41,21 @@ async function call(path,opts={}){
  return d;
 }
 const dataList=d=>{const x=d.clients??d.data??d; if(!Array.isArray(x))throw Error('Неизвестный формат списка клиентов');return x};
+function renderAlerts(){
+ const box=$('siteNotifications');if(!box)return;
+ const alerts=clients.filter(c=>c.period!=='lifetime'&&remaining(c)!==null&&remaining(c)<=7).sort((a,b)=>remaining(a)-remaining(b));
+ box.classList.toggle('hidden',alerts.length===0);
+ box.innerHTML=alerts.length?'<div class="site-notifications-head">Требуют внимания <span>'+alerts.length+'</span></div>'+alerts.map(c=>{
+ const d=remaining(c),expired=d<=0;
+ const label=expired?'Подписка истекла'+(d<0?' '+Math.abs(d)+' дн. назад':' сегодня'):'До окончания '+d+' дн.';
+ return '<div class="site-notification '+(expired?'expired':'warning')+'"><b>'+esc(c.name)+'</b> — '+esc(label)+' · '+esc(formatDate(c.end_date))+'</div>';
+ }).join(''):'';
+}
 function render(){
  const q=$('search').value.trim().toLowerCase(),f=$('filter').value;
- const shown=clients.filter(c=>(!q||[c.name,c.phone,c.note].some(v=>String(v||'').toLowerCase().includes(q)))&&(f==='all'||(f==='lifetime'&&c.period==='lifetime')||(f==='active'&&(c.period==='lifetime'||remaining(c)>0))||(f==='expired'&&c.period!=='lifetime'&&remaining(c)<=0)||(f==='soon'&&c.period!=='lifetime'&&remaining(c)>0&&remaining(c)<=7)||(f==='wg_on'&&wg.some(w=>w.id===c.wg_client_id&&w.enabled))||(f==='wg_off'&&!!c.wg_client_id&&!wg.some(w=>w.id===c.wg_client_id&&w.enabled))));
+ const shown=clients.filter(c=>(!q||[c.name,c.phone,c.note].some(v=>String(v||'').toLowerCase().includes(q)))&&(f==='all'||(f==='lifetime'&&c.period==='lifetime')||(f==='active'&&(c.period==='lifetime'||remaining(c)>0))||(f==='expired'&&c.period!=='lifetime'&&remaining(c)<=0)||(f==='soon'&&c.period!=='lifetime'&&remaining(c)>0&&remaining(c)<=7)||(f==='wg_on'&&wg.some(w=>String(w.id)===String(c.wg_client_id)&&w.enabled))||(f==='wg_off'&&!!c.wg_client_id&&!wg.some(w=>w.id===c.wg_client_id&&w.enabled))));
  $('counts').textContent='Всего: '+clients.length+' · Активных: '+clients.filter(c=>c.period==='lifetime'||remaining(c)>0).length;
+ renderAlerts();
  const wgIds=new Set(wg.map(w=>w.id));
  const active=clients.filter(c=>c.period==='lifetime'||remaining(c)>0).length;
  $('sTotal').textContent=clients.length;$('sActive').textContent=active;
@@ -55,7 +66,7 @@ function render(){
  const label=c=>esc(tariff[c.period]||c.period||'—');
  const referred=c=>esc(clients.find(x=>String(x.id)===String(c.referrer_id))?.name||'—');
  $('rows').innerHTML=shown.map(c=>'<tr><td><b>'+esc(c.name)+'</b>'+(c.note?'<small>'+esc(c.note)+'</small>':'')+'</td><td>'+esc(c.phone||'—')+'</td><td>'+referred(c)+'</td><td>'+wgDisplay(c)+'</td><td>'+label(c)+'</td><td>'+formatDate(c.start_date)+'</td><td>'+ (c.period==='lifetime'?'Навсегда':formatDate(c.end_date))+'</td><td><b>'+remain(c)+'</b></td><td>'+subscriptionStatus(c)+'</td><td>'+actions(c)+'</td></tr>').join('');
- $('cards').innerHTML=shown.map(c=>'<article class="card"><div class="card-top"><div><h3>'+esc(c.name)+'</h3><small>'+esc(c.phone||'')+'</small></div>'+subscriptionStatus(c)+'</div><div class="info"><div><small>Тариф</small><b>'+label(c)+'</b></div><div><small>До</small><b>'+(c.period==='lifetime'?'Навсегда':formatDate(c.end_date))+'</b></div><div><small>Осталось</small><b>'+remain(c)+' дн.</b></div></div>'+(c.referrer_id?'<div class="note">Пригласил: '+referred(c)+'</div>':'')+'<div class="note">'+wgDisplay(c)+'</div><details class="manage"><summary>Управление подпиской</summary><div class="manage-body">'+actions(c)+'</div></details></article>').join('');
+ $('cards').innerHTML=shown.map(c=>'<article class="card"><div class="card-top"><div><h3>'+esc(c.name)+'</h3><small>'+esc(c.phone||'')+'</small></div>'+subscriptionStatus(c)+'</div><div class="info"><div><small>Тариф</small><b>'+label(c)+'</b></div><div><small>До</small><b>'+(c.period==='lifetime'?'Навсегда':formatDate(c.end_date))+'</b></div><div><small>Осталось</small><b>'+remain(c)+' дн.</b></div></div>'+(c.referrer_id?'<div class="note">Пригласил: '+referred(c)+'</div>':'')+'<div class="note">'+wgDisplay(c)+'</div><details class="manage" open><summary>Управление подпиской</summary><div class="manage-body">'+actions(c)+'</div></details></article>').join('');
  $('empty').classList.toggle('hidden',shown.length>0);
  const current=$('referrer').value;
  $('referrer').innerHTML='<option value="">Никто</option>'+clients.map(c=>'<option value="'+c.id+'">'+esc(c.name)+'</option>').join('');
@@ -80,9 +91,9 @@ $('create').onsubmit=async e=>{
  try{const d=await call('/api/clients/create',{method:'POST',body:JSON.stringify(p)});msg('Клиент создан в SQLite (ID '+d.id+'). WireGuard пока не создан.');$('create').reset();$('create').elements.start_date.value=iso();
 await refresh()}catch(e){msg(e.message,true)}
 };
-$('rows').onclick=async e=>{
+async function handleClientAction(e){
  const btn=e.target.closest('button[data-act]');if(!btn)return;
- const id=Number(btn.dataset.id),c=clients.find(x=>x.id===id);if(!c)return;
+ const id=Number(btn.dataset.id),c=clients.find(x=>Number(x.id)===id);if(!c)return;
  try{
  if(btn.dataset.act==='referral'){
  const ref=clients.find(x=>String(x.id)===String(c.referrer_id));
@@ -95,7 +106,7 @@ $('rows').onclick=async e=>{
  const f=$('editForm');for(const key of ['id','name','phone','start_date','period','end_date','note'])f.elements[key].value=c[key]??'';
  $('editDialog').showModal();
  }else if(btn.dataset.act==='wg-toggle'){
- const peer=wg.find(w=>w.id===c.wg_client_id);
+ const peer=wg.find(w=>String(w.id)===String(c.wg_client_id));
  const action=peer?.enabled?'disable':'enable';
  if(!confirm((action==='disable'?'Отключить':'Включить')+' WireGuard для '+c.name+'?'))return;
  await call('/api/wg/client/'+encodeURIComponent(c.wg_client_id)+'/'+action,{method:'POST'});
@@ -105,8 +116,13 @@ $('rows').onclick=async e=>{
  const response=await fetch(API+'/api/wg/client/'+encodeURIComponent(c.wg_client_id)+'/'+(isQr?'qr':'config'),{headers:{Authorization:'Bearer '+token}});
  if(!response.ok)throw Error('Не удалось получить '+(isQr?'QR':'конфигурацию')+': HTTP '+response.status);
  const blob=await response.blob(),url=URL.createObjectURL(blob);
- if(isQr){const w=window.open(url,'_blank');if(!w)msg('Разрешите всплывающие окна для просмотра QR',true)}
- else{const link=document.createElement('a');link.href=url;link.download=(c.name||'wireguard').replace(/[^a-z0-9_-]/gi,'_')+'.conf';link.click()}
+ if(isQr){
+  const qr=$('qrImage');qr.src=url;
+  $('qrTitle').textContent='QR — '+c.name;
+  $('qrDialog').showModal();
+  $('qrDialog').dataset.objectUrl=url;
+  return;
+ }else{const link=document.createElement('a');link.href=url;link.download=(c.name||'wireguard').replace(/[^a-z0-9_-]/gi,'_')+'.conf';link.click()}
  setTimeout(()=>URL.revokeObjectURL(url),60000);
  }else if(btn.dataset.act==='wg-create'){
  if(!confirm('Создать WireGuard-профиль для '+c.name+' и привязать к SQLite?'))return;
@@ -128,7 +144,11 @@ $('rows').onclick=async e=>{
  await call('/api/clients/'+id+'/extend',{method:'POST',body:JSON.stringify({period})});await refresh();msg('Подписка продлена');
  }
  }catch(e){msg(e.message,true)}
-};
+}
+$('rows').addEventListener('click',handleClientAction);
+$('cards').addEventListener('click',handleClientAction);
+$('closeQr').onclick=()=>$('qrDialog').close();
+$('qrDialog').addEventListener('close',()=>{const d=$('qrDialog');if(d.dataset.objectUrl){URL.revokeObjectURL(d.dataset.objectUrl);delete d.dataset.objectUrl;$('qrImage').removeAttribute('src')}});
 $('closeHistory').onclick=()=>$('historyDialog').close();
 $('closeEdit').onclick=()=>$('editDialog').close();
 $('editForm').onsubmit=async e=>{
@@ -141,7 +161,7 @@ $('editForm').onsubmit=async e=>{
 function csvCell(value){const v=String(value??'');return '"'+(/^[=+@\-\t\r]/.test(v)?"'"+v:v).replace(/"/g,'""')+'"'}
 $('exportCsv').onclick=()=>{
  const cols=['ID','Имя','Телефон','Тариф','Начало','Окончание','Осталось дней','WG ID','WG статус','Пригласил','Заметка'];
- const data=clients.map(c=>[c.id,c.name,c.phone,c.period,c.start_date,c.end_date,remaining(c),c.wg_client_id,c.wg_client_id?(wg.find(w=>w.id===c.wg_client_id)?.enabled?'Включён':'Выключен или не найден'):'Нет',clients.find(x=>String(x.id)===String(c.referrer_id))?.name||'',c.note]);
+ const data=clients.map(c=>[c.id,c.name,c.phone,c.period,c.start_date,c.end_date,remaining(c),c.wg_client_id,c.wg_client_id?(wg.find(w=>String(w.id)===String(c.wg_client_id))?.enabled?'Включён':'Выключен или не найден'):'Нет',clients.find(x=>String(x.id)===String(c.referrer_id))?.name||'',c.note]);
  const csv='\uFEFF'+[cols,...data].map(row=>row.map(csvCell).join(';')).join('\r\n');
  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
  const a=document.createElement('a');a.href=url;a.download='vpn-manager-clients-'+iso()+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);
