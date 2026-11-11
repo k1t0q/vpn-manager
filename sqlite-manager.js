@@ -298,7 +298,7 @@ $('exportCsv').onclick=()=>{
  const a=document.createElement('a');a.href=url;a.download='vpn-manager-clients-'+iso()+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);
  msg('Экспортировано клиентов: '+clients.length);
 };
-$('reload').onclick=()=>refresh().catch(e=>msg(e.message,true));
+$('reload').onclick=()=>window.location.reload();
 $('search').oninput=render;$('filter').onchange=render;
 $('siteNotifications').addEventListener('toggle',e=>{if(e.target.matches('.attention-group')&&e.target.open){$('siteNotifications').querySelectorAll('.attention-group').forEach(group=>{if(group!==e.target)group.open=false})}},true);
 $('siteNotifications').addEventListener('click',e=>{
