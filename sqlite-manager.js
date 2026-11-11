@@ -45,9 +45,11 @@ function renderAlerts(){
  const box=$('siteNotifications');if(!box)return;
  const expired=clients.filter(c=>c.period!=='lifetime'&&remaining(c)!==null&&remaining(c)<=0).sort((a,b)=>remaining(a)-remaining(b));
  const soon=clients.filter(c=>c.period!=='lifetime'&&remaining(c)>0&&remaining(c)<7).sort((a,b)=>remaining(a)-remaining(b));
- const section=(type,title,items)=>'<details class="attention-group '+type+'"><summary>'+title+' <span class="attention-count">'+items.length+'</span><span class="attention-chevron">⌄</span></summary><div class="attention-list">'+(items.length?items.map(c=>'<button type="button" class="attention-person" data-jump-client="'+c.id+'"><div><b>'+esc(c.name)+'</b><small>До '+esc(formatDate(c.end_date))+'</small></div><strong>'+(type==='expired'?(remaining(c)===0?'Сегодня':Math.abs(remaining(c))+' дн. назад'):remaining(c)+' дн.')+'</strong></button>').join(''):'<div class="attention-empty">Нет клиентов</div>')+'</div></details>';
+ const section=(type,title,items)=>'<details name="vpn-attention" class="attention-group '+type+'"><summary>'+title+' <span class="attention-count">'+items.length+'</span><span class="attention-chevron">⌄</span></summary><div class="attention-list">'+(items.length?items.map(c=>'<button type="button" class="attention-person" data-jump-client="'+c.id+'"><div><b>'+esc(c.name)+'</b><small>До '+esc(formatDate(c.end_date))+'</small></div><strong>'+(type==='expired'?(remaining(c)===0?'Сегодня':Math.abs(remaining(c))+' дн. назад'):remaining(c)+' дн.')+'</strong></button>').join(''):'<div class="attention-empty">Нет клиентов</div>')+'</div></details>';
  box.classList.remove('hidden');
+ const open=box.querySelector('.attention-group[open]')?.classList.contains('expired')?'expired':box.querySelector('.attention-group[open]')?.classList.contains('soon')?'soon':null;
  box.innerHTML=section('expired','Истекли',expired)+section('soon','Менее 7 дней',soon);
+ if(open)box.querySelector('.attention-group.'+open)?.setAttribute('open','');
 }
 function render(){
  const q=$('search').value.trim().toLowerCase(),f=$('filter').value;
@@ -172,6 +174,7 @@ $('exportCsv').onclick=()=>{
 };
 $('reload').onclick=()=>refresh().catch(e=>msg(e.message,true));
 $('search').oninput=render;$('filter').onchange=render;
+$('siteNotifications').addEventListener('toggle',e=>{if(e.target.matches('.attention-group')&&e.target.open){$('siteNotifications').querySelectorAll('.attention-group').forEach(group=>{if(group!==e.target)group.open=false})}},true);
 $('siteNotifications').addEventListener('click',e=>{
  const button=e.target.closest('button[data-jump-client]');if(!button)return;
  const id=button.dataset.jumpClient;
