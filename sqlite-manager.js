@@ -47,7 +47,7 @@ $('create').onsubmit=async e=>{
  const form=new FormData(e.currentTarget),p=Object.fromEntries(form);
  p.user_id='vpn-manager-admin';if(!p.referrer_id)delete p.referrer_id;
  try{const d=await call('/api/clients/create',{method:'POST',body:JSON.stringify(p)});msg('Клиент создан в SQLite (ID '+d.id+'). WireGuard пока не создан.');$('create').reset();$('create').elements.start_date.value=iso();
-if(token){refresh().then(()=>{$('loginPane').classList.add('m-hide');$('workspace').classList.remove('m-hide')}).catch(e=>{msg('Не удалось восстановить сеанс: '+e.message,true)})}await refresh()}catch(e){msg(e.message,true)}
+await refresh()}catch(e){msg(e.message,true)}
 };
 $('rows').onclick=async e=>{
  const btn=e.target.closest('button[data-act]');if(!btn)return;
@@ -99,7 +99,26 @@ $('editForm').onsubmit=async e=>{
  try{await call('/api/clients/'+id,{method:'PATCH',body:JSON.stringify(d)});$('editDialog').close();await refresh();msg('Клиент обновлён')}
  catch(err){msg('Редактирование пока недоступно на сервере: '+err.message,true)}
 };
-$('reload').onclick=()=>refresh().catch(e=>msg(e.message,true));
+
+function csvCell(value){const v=String(value??'');return '"'+(/^[=+@\-\t\r]/.test(v)?"'"+v:v).replace(/"/g,'""')+'"'}
+$('exportCsv').onclick=()=>{
+ const cols=['ID','Имя','Телефон','Тариф','Начало','Окончание','Осталось дней','WG ID','WG статус','Пригласил','Заметка'];
+ const data=clients.map(c=>[c.id,c.name,c.phone,c.period,c.start_date,c.end_date,remaining(c),c.wg_client_id,c.wg_client_id?(wg.find(w=>w.id===c.wg_client_id)?.enabled?'Включён':'Выключен или не найден'):'Нет',clients.find(x=>String(x.id)===String(c.referrer_id))?.name||'',c.note]);
+ const csv='\uFEFF'+[cols,...data].map(row=>row.map(csvCell).join(';')).join('\r\n');
+ const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+ const a=document.createElement('a');a.href=url;a.download='vpn-manager-clients-'+iso()+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);
+ msg('Экспортировано клиентов: '+clients.length);
+};
+$('noticePreview').onclick=()=>{
+ const candidates=clients.filter(c=>c.period!=='lifetime'&&remaining(c)!==null&&remaining(c)<=3).sort((a,b)=>remaining(a)-remaining(b));
+ $('noticeItems').innerHTML=candidates.map(c=>{
+  const days=remaining(c),kind=days<=0?'Срок истёк':'Осталось '+days+' дн.';
+  return '<p><b>'+esc(c.name)+'</b> · '+esc(kind)+' · '+esc(c.end_date||'')+'</p>';
+ }).join('')||'<p>Нет подписок, требующих уведомления.</p>';
+ $('noticeDialog').showModal();
+};
+$('closeNotices').onclick=()=>$('noticeDialog').close();
+\n$('reload').onclick=()=>refresh().catch(e=>msg(e.message,true));
 $('search').oninput=render;$('filter').onchange=render;
 $('logout').onclick=async()=>{try{await call('/auth/logout',{method:'POST'})}catch{}token='';localStorage.removeItem(TOKEN_KEY);clients=[];wg=[];$('workspace').classList.add('m-hide');$('loginPane').classList.remove('m-hide');msg('Выход выполнен')};
 $('create').elements.start_date.value=iso();
