@@ -2,7 +2,8 @@
 'use strict';
 const API='https://vpn-staging.80-90-179-65.sslip.io';
 const $=id=>document.getElementById(id);
-let token='',clients=[],wg=[];
+const TOKEN_KEY='vpn_manager_sqlite_session_v1';
+let token=localStorage.getItem(TOKEN_KEY)||'',clients=[],wg=[];
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const msg=(t,bad=false)=>{$('status').textContent=t;$('status').className=bad?'m-error':'m-ok'};
 const iso=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')};
@@ -11,7 +12,7 @@ const remaining=c=>c.end_date?Math.ceil((date(c.end_date)-date(iso()))/86400000)
 async function call(path,opts={}){
  const r=await fetch(API+path,{...opts,headers:{'Content-Type':'application/json',...(token?{'Authorization':'Bearer '+token}:{}),...(opts.headers||{})}});
  let d;try{d=await r.json()}catch{throw Error('Некорректный ответ сервера: '+r.status)}
- if(!r.ok||d.ok===false){if(r.status===401){token='';$('workspace').classList.add('m-hide');$('loginPane').classList.remove('m-hide')}throw Error(d.error||'HTTP '+r.status)}
+ if(!r.ok||d.ok===false){if(r.status===401){token='';localStorage.removeItem(TOKEN_KEY);$('workspace').classList.add('m-hide');$('loginPane').classList.remove('m-hide')}throw Error(d.error||'HTTP '+r.status)}
  return d;
 }
 const dataList=d=>{const x=d.clients??d.data??d; if(!Array.isArray(x))throw Error('Неизвестный формат списка клиентов');return x};
@@ -37,15 +38,16 @@ async function refresh(){
 $('login').onsubmit=async e=>{
  e.preventDefault();try{
  const d=await call('/auth/login',{method:'POST',body:JSON.stringify({code:$('code').value})});
- token=d.access_token||d.token||'';if(!token)throw Error('Сервер не вернул токен');
+ token=d.access_token||d.token||'';if(!token)throw Error('Сервер не вернул токен');localStorage.setItem(TOKEN_KEY,token);
  $('code').value='';await refresh();$('loginPane').classList.add('m-hide');$('workspace').classList.remove('m-hide');
- }catch(e){token='';msg('Ошибка входа: '+e.message,true)}
+ }catch(e){token='';localStorage.removeItem(TOKEN_KEY);msg('Ошибка входа: '+e.message,true)}
 };
 $('create').onsubmit=async e=>{
  e.preventDefault();if(!confirm('Создать запись клиента в SQLite? WireGuard-профиль пока не создаётся автоматически.'))return;
  const form=new FormData(e.currentTarget),p=Object.fromEntries(form);
  p.user_id='vpn-manager-admin';if(!p.referrer_id)delete p.referrer_id;
- try{const d=await call('/api/clients/create',{method:'POST',body:JSON.stringify(p)});msg('Клиент создан в SQLite (ID '+d.id+'). WireGuard пока не создан.');$('create').reset();$('create').elements.start_date.value=iso();await refresh()}catch(e){msg(e.message,true)}
+ try{const d=await call('/api/clients/create',{method:'POST',body:JSON.stringify(p)});msg('Клиент создан в SQLite (ID '+d.id+'). WireGuard пока не создан.');$('create').reset();$('create').elements.start_date.value=iso();
+if(token){refresh().then(()=>{$('loginPane').classList.add('m-hide');$('workspace').classList.remove('m-hide')}).catch(e=>{msg('Не удалось восстановить сеанс: '+e.message,true)})}await refresh()}catch(e){msg(e.message,true)}
 };
 $('rows').onclick=async e=>{
  const btn=e.target.closest('button[data-act]');if(!btn)return;
@@ -99,6 +101,6 @@ $('editForm').onsubmit=async e=>{
 };
 $('reload').onclick=()=>refresh().catch(e=>msg(e.message,true));
 $('search').oninput=render;$('filter').onchange=render;
-$('logout').onclick=async()=>{try{await call('/auth/logout',{method:'POST'})}catch{}token='';clients=[];wg=[];$('workspace').classList.add('m-hide');$('loginPane').classList.remove('m-hide');msg('Выход выполнен')};
+$('logout').onclick=async()=>{try{await call('/auth/logout',{method:'POST'})}catch{}token='';localStorage.removeItem(TOKEN_KEY);clients=[];wg=[];$('workspace').classList.add('m-hide');$('loginPane').classList.remove('m-hide');msg('Выход выполнен')};
 $('create').elements.start_date.value=iso();
 })();
