@@ -47,7 +47,16 @@ $('rows').onclick=async e=>{
  const btn=e.target.closest('button[data-act]');if(!btn)return;
  const id=Number(btn.dataset.id),c=clients.find(x=>x.id===id);if(!c)return;
  try{
- if(btn.dataset.act==='history'){
+ if(btn.dataset.act==='wg-create'){
+ if(!confirm('Создать WireGuard-профиль для '+c.name+' и привязать к SQLite?'))return;
+ const result=await call('/api/wg/client',{method:'POST',body:JSON.stringify({name:c.name})});
+ const peer=result.client||result;
+ const wid=result.id||result.client_id||result.wg_client_id||peer.id;
+ if(!wid)throw Error('WireGuard создал профиль, но не вернул ID. Проверьте wg-easy перед повтором.');
+ try{await call('/api/clients/'+id+'/wireguard',{method:'POST',body:JSON.stringify({wg_client_id:wid})})}
+ catch(err){throw Error('WireGuard профиль '+wid+' создан, но привязка не удалась: '+err.message+'. НЕ повторяйте создание.')}
+ await refresh();msg('WireGuard создан и привязан к '+c.name);
+ }else if(btn.dataset.act==='history'){
  const d=await call('/api/clients/'+id+'/history');
  $('history').innerHTML=(d.history||[]).map(h=>'<p><b>'+esc(h.event_type)+'</b> — '+esc(h.description)+'<small> '+esc(h.created_at)+'</small></p>').join('')||'<p>Записей пока нет</p>';
  $('historyDialog').showModal();
