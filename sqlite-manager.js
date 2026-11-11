@@ -214,7 +214,7 @@ async function handleClientAction(e){
  if(isQr){
   const url=URL.createObjectURL(blob);
   const qr=$('qrImage');qr.src=url;
-  $('qrTitle').textContent='QR - '+peerLabel(c);
+  $('qrTitle').textContent=peerLabel(c).replace(/^CEASER\s+BOT/i,'CAESAR BOT');
   $('qrDialog').dataset.peerName=peerLabel(c)||'WireGuard';
   $('qrDialog').dataset.tariff=tariff[c.period]||c.period||'—';
   $('qrDialog').dataset.expires=c.period==='lifetime'?'Бессрочно ∞':formatDate(c.end_date);
