@@ -290,7 +290,10 @@ $('shareQr').onclick=async()=>{
   text(label.replace(/^CEASER\s+BOT/i,'CAESAR BOT'),88,104,'bold 44px Arial,sans-serif','#f5f9ff');
   round(56,146,788,784,24,'#ffffff');
   ctx.imageSmoothingEnabled=false;
-  ctx.drawImage(img,84,160,732,732);
+  const qrSize=732;
+  const qrX=56+(788-qrSize)/2;
+  const qrY=146+(784-qrSize)/2;
+  ctx.drawImage(img,qrX,qrY,qrSize,qrSize);
   ctx.imageSmoothingEnabled=true;
   round(56,954,382,126,18,'#202e40','#34465a');
   round(462,954,382,126,18,'#202e40','#34465a');
