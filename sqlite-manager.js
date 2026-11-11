@@ -171,7 +171,8 @@ async function handleClientAction(e){
   $('qrDialog').dataset.objectUrl=url;
   return;
  }
- const fileName=(c.name||'wireguard').replace(/[^a-z0-9_-]/gi,'_')+'.conf';
+ const peerName=wg.find(w=>String(w.id)===String(c.wg_client_id))?.name||'WireGuard';
+ const fileName=peerName.replace(/[\\/:*?"<>|\x00-\x1f]/g,'_').trim()+'.conf';
  const file=new File([blob],fileName,{type:'application/octet-stream'});
  if(typeof navigator.share==='function'&&typeof navigator.canShare==='function'&&navigator.canShare({files:[file]})){
   try{
