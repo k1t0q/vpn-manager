@@ -15,8 +15,10 @@ s=p.read_text()
 line='from sqlite_client_crud import register as register_crud\nregister_crud(app,authorized,db_connect)\n'
 if 'register_crud(app,authorized,db_connect)' not in s:
     marker="if __name__=='__main__':"
-    if marker not in s: raise SystemExit('Staging API structure changed; no modification made')
-    s=s.replace(marker,line+'\n'+marker)
+    if marker in s:
+        s=s.replace(marker,line+'\\n'+marker)
+    else:
+        s=s.rstrip()+'\\n\\n'+line
     p.write_text(s)
 PY
 python3 -m py_compile staging_api.py sqlite_client_crud.py
