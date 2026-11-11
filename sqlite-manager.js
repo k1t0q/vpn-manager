@@ -159,12 +159,23 @@ $('qrDialog').addEventListener('close',()=>{const d=$('qrDialog');if(d.dataset.o
 $('closeHistory').onclick=()=>$('historyDialog').close();
 $('closeEdit').onclick=()=>$('editDialog').close();
 $('deleteClient').onclick=async()=>{
- const f=$('editForm'),id=Number(f.elements.id.value);
- const c=clients.find(x=>Number(x.id)===id);if(!c)return;
+ const dialog=$('editDialog');
+ const id=Number($('editForm').querySelector('input[name="id"]')?.value);
+ const c=clients.find(x=>Number(x.id)===id);
+ if(!c){alert('Не удалось определить клиента. Закройте окно и откройте его заново.');return}
+ if(!confirm('Удалить клиента «'+c.name+'»?\n\nБудут удалены запись из VPN MANAGER и привязанный профиль WireGuard. Это действие нельзя отменить.'))return;
+ const button=$('deleteClient');
+ button.disabled=true;
  try{
   await call('/api/clients/'+id,{method:'DELETE'});
-  $('editDialog').close();await refresh();msg('Клиент «'+c.name+'» удалён из базы. WireGuard не изменён.');
- }catch(err){msg('Не удалось удалить клиента: '+err.message,true)}
+  dialog.close();
+  await refresh();
+  msg('Клиент «'+c.name+'» удалён вместе с привязанным WireGuard-профилем.');
+ }catch(err){
+  const message='Не удалось удалить клиента: '+err.message;
+  msg(message,true);
+  alert(message);
+ }finally{button.disabled=false}
 };
 $('editForm').onsubmit=async e=>{
  e.preventDefault();const d=Object.fromEntries(new FormData(e.currentTarget));const id=Number(d.id);
