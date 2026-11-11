@@ -7,7 +7,7 @@ import threading
 import requests
 from flask import jsonify, request, Response
 
-WGEASY_URL = "http://127.0.0.1:51821"
+WGEASY_URL = os.environ.get("WGEASY_URL", "http://127.0.0.1:51821").rstrip("/")
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _lock = threading.RLock()
 _wg = requests.Session()
@@ -22,8 +22,6 @@ def _request(method, path, **kwargs):
             auth = _wg.post(WGEASY_URL + "/api/session",
                             json={"password": password}, timeout=15)
             auth.raise_for_status()
-            if not auth.json().get("success"):
-                raise RuntimeError("wg-easy authentication failed")
             r = _wg.request(method, WGEASY_URL + path, timeout=15, **kwargs)
         r.raise_for_status()
         return r
