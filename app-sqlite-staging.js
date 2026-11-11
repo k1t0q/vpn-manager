@@ -12,7 +12,7 @@ async function sqlite(path,method="GET",payload){
   if(!res.ok||data.ok===false)throw Error(data.error||"SQLite HTTP "+res.status);
   return data;
 }
-const sb=null;
+
 const BACKEND="https://80-90-179-65.sslip.io";
 let session=null,clients=[],wgClients=[],attentionOnly=false,clientFilter="all";
 
@@ -345,7 +345,7 @@ document.addEventListener("click",async e=>{
     }
     if(a==="wg-link"){
       const sel=document.querySelector(`[data-link="${id}"]`),wid=sel?.value;if(!wid)throw new Error("Выбери WireGuard-клиента");
-      const{error}=await sb.from("clients").update({wg_client_id:wid}).eq("id",id);if(error)throw error;await logHistory(id,"wg_linked","Привязан существующий WireGuard-профиль");msg("WireGuard привязан");return load();
+      await sqlite("/api/clients/"+id,"PATCH",{wg_client_id:wid});await logHistory(id,"wg_linked","Привязан существующий WireGuard-профиль");msg("WireGuard привязан");return load();
     }
     if(a==="wg-unlink"){
       await sqlite("/api/clients/"+id,"PATCH",{wg_client_id:null});await logHistory(id,"wg_unlinked","Привязка WireGuard сброшена (профиль не удалён)");msg("Привязка сброшена");return load();
