@@ -205,7 +205,7 @@ async function handleClientAction(e){
  if(isQr){
   const url=URL.createObjectURL(blob);
   const qr=$('qrImage');qr.src=url;
-  $('qrTitle').textContent='QR — '+c.name;
+  $('qrTitle').textContent='QR - '+peerLabel(c);
   $('qrDialog').showModal();
   $('qrDialog').dataset.objectUrl=url;
   return;
