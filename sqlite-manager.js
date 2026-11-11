@@ -307,7 +307,7 @@ $('shareQr').onclick=async()=>{
   const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('Не удалось создать изображение')),'image/png'));
   const file=new File([blob],'CAESAR-BOT-QR.png',{type:'image/png'});
   const botId=/CAESAR BOT #\d+/i.test(name)?name.match(/CAESAR BOT #\d+/i)[0]:name;
-  const shareText='CAESAR BOT # — '+botId+'\nВаш QR-код для подключения VPN через WireGuard.\nТариф: '+(dialog.dataset.tariff||'—')+'\nДействует до: '+(dialog.dataset.expires||'—');
+  const shareText=(/^CAESAR BOT #/i.test(botId)?botId:'CAESAR BOT # — '+botId)+'\nВаш QR-код для подключения VPN через WireGuard.\nТариф: '+(dialog.dataset.tariff||'—')+'\nДействует до: '+(dialog.dataset.expires||'—');
   if(navigator.share&&(!navigator.canShare||navigator.canShare({files:[file]}))){
    try{await navigator.share({files:[file],title:'CAESAR BOT #',text:shareText});return}
    catch(e){if(e.name==='AbortError')return}
