@@ -13,7 +13,7 @@ async function sqlite(path,method="GET",payload){
   return data;
 }
 
-const BACKEND="https://80-90-179-65.sslip.io";
+const BACKEND=STAGING;
 let session=null,clients=[],wgClients=[],attentionOnly=false,clientFilter="all";
 
 const labels={"trial":"Пробный — 24 часа","14d":"14 дней","1m":"1 месяц","2m":"2 месяца","6m":"6 месяцев","12m":"12 месяцев","lifetime":"Навсегда","imported":"Импорт"};
@@ -68,32 +68,11 @@ async function showHistory(c){
 }
 
 async function api(path,opts={}){
-  let apiToken=localStorage.getItem("vpn_manager_api_token")||"";
-  if(!apiToken){
-    apiToken=prompt("Введите API-токен VPN MANAGER:");
-    if(!apiToken)throw new Error("API-токен не указан");
-    localStorage.setItem("vpn_manager_api_token",apiToken);
-  }
-
-  const headers={...(opts.headers||{}),"X-VPN-Token":apiToken};
-  if(opts.body && typeof opts.body==="string")headers["Content-Type"]="application/json";
-
-  let r=await fetch(BACKEND+path,{...opts,headers});
-
-  if(r.status===401){
-    localStorage.removeItem("vpn_manager_api_token");
-    apiToken=prompt("API-токен неверный. Введите новый:");
-    if(!apiToken)throw new Error("Неверный API-токен");
-    localStorage.setItem("vpn_manager_api_token",apiToken);
-    headers["X-VPN-Token"]=apiToken;
-    r=await fetch(BACKEND+path,{...opts,headers});
-  }
-
-  if(!r.ok){
-    let detail="";
-    try{detail=(await r.json()).error||""}catch{}
-    throw new Error(detail||`Backend HTTP ${r.status}`);
-  }
+  if(!sqliteToken)throw Error("Сначала войдите в SQLite");
+  const headers={...(opts.headers||{}),"Authorization":"Bearer "+sqliteToken};
+  if(typeof opts.body==="string")headers["Content-Type"]="application/json";
+  const r=await fetch(STAGING+path,{...opts,headers,cache:"no-store"});
+  if(!r.ok){let error="HTTP "+r.status;try{error=(await r.json()).error||error}catch{}throw Error(error)}
   return r;
 }
 async function apiJson(path,opts={}){return (await api(path,opts)).json()}
