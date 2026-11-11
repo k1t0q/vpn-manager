@@ -105,6 +105,20 @@ function peerLabel(c){
  const match=String(raw).trim().match(/^((?:CAESAR|CEASER) BOT #\d+)(?=\s|$)/i);
  return match?match[1]:(raw||c.name);
 }
+function addMonthsISO(base,months){
+ const parts=String(base).split('-').map(Number);
+ const date=new Date(Date.UTC(parts[0],parts[1]-1,1));
+ date.setUTCMonth(date.getUTCMonth()+months);
+ const last=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth()+1,0)).getUTCDate();
+ date.setUTCDate(Math.min(parts[2],last));
+ return date.toISOString().slice(0,10);
+}
+function syncEditEndDate(){
+ const f=$('editForm'),period=f.elements.period.value,end=f.elements.end_date;
+ if(period==='lifetime'){end.disabled=true;end.value='';return}
+ end.disabled=false;
+ if(!end.value){const months={'1m':1,'6m':6,'12m':12}[period]||1;end.value=addMonthsISO(f.elements.start_date.value||iso(),months)}
+}
 function nextPeerName(){
  const numbers=wg.map(w=>/^(?:CAESAR|CEASER) BOT #(\d+)(?=\s|$)/i.exec(String(w.name||'').trim())).filter(Boolean).map(m=>Number(m[1]));
  return 'CAESAR BOT #'+(Math.max(0,...numbers)+1);
@@ -155,6 +169,7 @@ async function handleClientAction(e){
  await refresh();msg('Начислено +'+r.bonus_days+' дней клиенту '+ref.name);
  }else if(btn.dataset.act==='edit'){
  const f=$('editForm');for(const key of ['id','name','phone','start_date','period','end_date','note'])f.elements[key].value=c[key]??'';
+ syncEditEndDate();
  $('editDialog').showModal();
  requestAnimationFrame(()=>{if(document.activeElement?.blur)document.activeElement.blur()});
  }else if(btn.dataset.act==='wg-toggle'){
@@ -220,10 +235,12 @@ $('closeQr').onclick=()=>$('qrDialog').close();
 $('qrDialog').addEventListener('close',()=>{const d=$('qrDialog');if(d.dataset.objectUrl){URL.revokeObjectURL(d.dataset.objectUrl);delete d.dataset.objectUrl;$('qrImage').removeAttribute('src')}});
 $('closeHistory').onclick=()=>$('historyDialog').close();
 $('closeEdit').onclick=()=>$('editDialog').close();
+$('editForm').elements.period.addEventListener('change',()=>{const f=$('editForm');if(f.elements.period.value!=='lifetime'&&!f.elements.end_date.value)syncEditEndDate();else if(f.elements.period.value==='lifetime')syncEditEndDate()});
 $('editForm').onsubmit=async e=>{
  e.preventDefault();const d=Object.fromEntries(new FormData(e.currentTarget));const id=Number(d.id);
  delete d.id;
  if(d.period==='lifetime')d.end_date=null;
+ else if(!d.end_date){d.end_date=addMonthsISO(d.start_date||iso(),{'1m':1,'6m':6,'12m':12}[d.period]||1)}
  try{await call('/api/clients/'+id,{method:'PATCH',body:JSON.stringify(d)});$('editDialog').close();await refresh();msg('Клиент обновлён')}
  catch(err){const message='Не удалось сохранить изменения: '+err.message;msg(message,true);alert(message)}
 };
@@ -263,7 +280,6 @@ if(token){
    msg('Не удалось восстановить сеанс: '+err.message,true);
  });
 }
-})();
 $('closeExtend').onclick=()=>$('extendDialog').close();
 $('extendForm').addEventListener('submit',async e=>{
  e.preventDefault();
@@ -273,6 +289,7 @@ $('extendForm').addEventListener('submit',async e=>{
  try{
   await call('/api/clients/'+id+'/extend',{method:'POST',body:JSON.stringify({period})});
   dialog.close();await refresh();msg('Подписка продлена');
- }catch(err){msg(err.message,true)}
+ }catch(err){msg('Не удалось продлить: '+err.message,true);alert('Не удалось продлить: '+err.message)}
  finally{button.disabled=false}
 });
+})();
