@@ -215,6 +215,7 @@ async function handleClientAction(e){
   const url=URL.createObjectURL(blob);
   const qr=$('qrImage');qr.src=url;
   $('qrTitle').textContent='QR - '+peerLabel(c);
+  $('qrDialog').dataset.peerName=peerLabel(c)||'WireGuard';
   $('qrDialog').showModal();
   $('qrDialog').dataset.objectUrl=url;
   return;
@@ -261,6 +262,38 @@ async function handleClientAction(e){
 $('rows').addEventListener('click',handleClientAction);
 $('cards').addEventListener('click',handleClientAction);
 $('closeQr').onclick=()=>$('qrDialog').close();
+$('shareQr').onclick=async()=>{
+ const dialog=$('qrDialog'),img=$('qrImage'),button=$('shareQr');
+ if(!img.complete||!img.naturalWidth){msg('QR-код ещё загружается',true);return}
+ button.disabled=true;
+ try{
+  const name=dialog.dataset.peerName||'WireGuard';
+  const canvas=document.createElement('canvas');
+  canvas.width=840;canvas.height=1000;
+  const ctx=canvas.getContext('2d');
+  ctx.fillStyle='#ffffff';ctx.fillRect(0,0,840,1000);
+  ctx.fillStyle='#182234';ctx.textAlign='center';
+  ctx.font='bold 40px Arial,sans-serif';ctx.fillText('WireGuard · VPN',420,82);
+  ctx.font='28px Arial,sans-serif';
+  const label=name.length>36?name.slice(0,35)+'…':name;
+  ctx.fillText(label,420,132);
+  ctx.drawImage(img,100,185,640,640);
+  ctx.font='22px Arial,sans-serif';ctx.fillStyle='#555e6b';
+  ctx.fillText('Сканируйте QR-код в приложении WireGuard',420,895);
+  const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('Не удалось создать изображение')),'image/png'));
+  const file=new File([blob],'WireGuard-QR.png',{type:'image/png'});
+  if(navigator.share&&(!navigator.canShare||navigator.canShare({files:[file]}))){
+   try{await navigator.share({files:[file],title:'WireGuard VPN'});return}
+   catch(e){if(e.name==='AbortError')return}
+  }
+  const url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=file.name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),30000);
+  msg('QR-код с подписью сохранён. Отправьте изображение получателю.');
+ }catch(e){msg('Не удалось отправить QR-код: '+e.message,true)}
+ finally{button.disabled=false}
+};
+
 $('qrDialog').addEventListener('close',()=>{const d=$('qrDialog');if(d.dataset.objectUrl){URL.revokeObjectURL(d.dataset.objectUrl);delete d.dataset.objectUrl;$('qrImage').removeAttribute('src')}});
 $('closeHistory').onclick=()=>$('historyDialog').close();
 $('closeEdit').onclick=()=>$('editDialog').close();
