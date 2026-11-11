@@ -29,7 +29,10 @@ def register(app,authorized,db_connect):
                 referrer_id=referred["referrer_id"]
                 if referrer_id is None or int(referrer_id)==referred_id:
                     return jsonify(ok=False,error="No valid referrer"),400
-                days=BONUS.get(str(referred["period"]))
+                selected_period=d.get("bonus_period",referred["period"])
+                if str(selected_period) not in ("1m","6m","12m","1","6","12"):
+                    return jsonify(ok=False,error="Invalid bonus period"),400
+                days=BONUS.get(str(selected_period))
                 if not days:return jsonify(ok=False,error="Tariff has no referral bonus"),400
                 referrer=con.execute("SELECT id,name,user_id,period,end_date FROM clients WHERE id=?",(referrer_id,)).fetchone()
                 if referrer is None:return jsonify(ok=False,error="Referrer not found"),404
@@ -44,7 +47,7 @@ def register(app,authorized,db_connect):
                 con.execute("INSERT INTO sqlite_referral_awards(referred_client_id,referrer_client_id,bonus_days) VALUES(?,?,?)",(referred_id,referrer_id,days))
                 con.execute("UPDATE clients SET end_date=? WHERE id=?",(new_end,referrer_id))
                 con.execute("INSERT INTO client_history (user_id,client_id,event_type,description) VALUES (?,?,?,?)",
-                    (referrer["user_id"],referrer_id,"referral_bonus","Referral bonus +%s days from client #%s"%(days,referred_id)))
+                    (referrer["user_id"],referrer_id,"referral_bonus","Referral bonus +%s days (selected tariff %s) from client #%s"%(days,selected_period,referred_id)))
             return jsonify(ok=True,client_id=referred_id,referrer_id=referrer_id,bonus_days=days,new_end_date=new_end,wireguard_unchanged=True)
         except sqlite3.IntegrityError:
             return jsonify(ok=False,error="Referral bonus already awarded"),409
