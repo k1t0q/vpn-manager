@@ -100,12 +100,34 @@ $('login').onsubmit=async e=>{
  $('code').value='';await refresh();$('loginPane').classList.add('m-hide');$('workspace').classList.remove('m-hide');
  }catch(e){token='';localStorage.removeItem(TOKEN_KEY);msg('Ошибка входа: '+e.message,true)}
 };
+function nextPeerName(){
+ const numbers=wg.map(w=>/^CEASER BOT #(\d+)$/i.exec(String(w.name||'').trim())).filter(Boolean).map(m=>Number(m[1]));
+ return 'CEASER BOT #'+(Math.max(0,...numbers)+1);
+}
 $('create').onsubmit=async e=>{
- e.preventDefault();if(!confirm('Создать запись клиента в SQLite? WireGuard-профиль пока не создаётся автоматически.'))return;
+ e.preventDefault();
  const form=new FormData(e.currentTarget),p=Object.fromEntries(form);
  p.user_id='vpn-manager-admin';if(!p.referrer_id)delete p.referrer_id;
- try{const d=await call('/api/clients/create',{method:'POST',body:JSON.stringify(p)});msg('Клиент создан в SQLite (ID '+d.id+'). WireGuard пока не создан.');$('create').reset();$('create').elements.start_date.value=iso();
-await refresh()}catch(e){msg(e.message,true)}
+ const peerName=nextPeerName();
+ if(!confirm('Создать клиента «'+p.name+'» и VPN-профиль «'+peerName+'»?'))return;
+ const submit=e.currentTarget.querySelector('[type="submit"]');if(submit)submit.disabled=true;
+ try{
+  const d=await call('/api/clients/create',{method:'POST',body:JSON.stringify(p)});
+  const id=d.id||d.client?.id;
+  if(!id)throw Error('Запись клиента создана, но сервер не вернул ID. Проверьте список перед повтором.');
+  let wid;
+  try{
+   const result=await call('/api/wg/client',{method:'POST',body:JSON.stringify({name:peerName})});
+   const peer=result.client||result;
+   wid=result.id||result.client_id||result.wg_client_id||peer.id;
+   if(!wid)throw Error('wg-easy не вернул ID созданного профиля');
+  }catch(err){await refresh();throw Error('Клиент «'+p.name+'» создан (ID '+id+'), но VPN-профиль не создан или не подтверждён: '+err.message+'. Проверьте wg-easy, не создавайте клиента повторно.')}
+  try{await call('/api/clients/'+id+'/wireguard',{method:'POST',body:JSON.stringify({wg_client_id:wid})})}
+  catch(err){await refresh();throw Error('Клиент и VPN-профиль «'+peerName+'» созданы, но привязка не удалась: '+err.message+'. Не создавайте их повторно.')}
+  $('create').reset();$('create').elements.start_date.value=iso();
+  await refresh();msg('Создан клиент «'+p.name+'» — '+peerName);
+ }catch(err){msg(err.message,true);alert(err.message)}
+ finally{if(submit)submit.disabled=false}
 };
 async function handleClientAction(e){
  const btn=e.target.closest('button[data-act]');if(!btn)return;
@@ -166,7 +188,7 @@ async function handleClientAction(e){
  }
  }else if(btn.dataset.act==='wg-create'){
  if(!confirm('Создать WireGuard-профиль для '+c.name+' и привязать к SQLite?'))return;
- const result=await call('/api/wg/client',{method:'POST',body:JSON.stringify({name:c.name})});
+ const result=await call('/api/wg/client',{method:'POST',body:JSON.stringify({name:nextPeerName()})});
  const peer=result.client||result;
  const wid=result.id||result.client_id||result.wg_client_id||peer.id;
  if(!wid)throw Error('WireGuard создал профиль, но не вернул ID. Проверьте wg-easy перед повтором.');
