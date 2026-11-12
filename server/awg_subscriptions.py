@@ -120,6 +120,10 @@ class Subscriptions(PeerStore):
    if data or end is None or end>now:raise StateError('Subscription has not expired')
    notification=('expired',row['end_date'])
    return {},'expired','Subscription expired; access disabled',notification
+  if kind=='resume':
+   end=subscription_deadline(row['period'],row['end_date'])
+   if data or not meta.get('auto_disabled') or (end is not None and end<=now):raise StateError('Automatic reactivation is not due')
+   return {},'reactivated','Access restored after subscription extension',None
   if kind=='referral':
    if set(data)-{'client_id','bonus_period'} or type(data.get('client_id')) is not int:raise StateError('Invalid referral request')
    source=con.execute('SELECT * FROM clients WHERE id=?',(data['client_id'],)).fetchone()
@@ -154,6 +158,11 @@ class Subscriptions(PeerStore):
    cid=str(row['id'])
    if cid in self.protected:continue
    end=subscription_deadline(row['period'],row['end_date'])
+   if end is None or end>now:
+    meta=json.loads(self._metadata(cid).read_text())
+    if meta.get('auto_disabled'):
+     key='resume-'+hashlib.sha256(json.dumps([cid,row['end_date']]).encode()).hexdigest()
+     self.change(cid,'resume',{},key,now)
    if end is None:continue
    if end<=now:
     key='expiry-'+hashlib.sha256(json.dumps([cid,row['end_date']]).encode()).hexdigest()

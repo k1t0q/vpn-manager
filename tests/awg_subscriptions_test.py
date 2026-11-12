@@ -3,6 +3,7 @@ import json,sqlite3,unittest
 import awg_provision_test as base
 from awg_persistence import StateError,peer_blocks
 from awg_subscriptions import Subscriptions
+from awg_provision import Provisioner
 
 
 class SubscriptionTests(unittest.TestCase):
@@ -80,6 +81,14 @@ class SubscriptionTests(unittest.TestCase):
   self.change('extend',{'period':'lifetime'},'ref-lifetime-00001')
   with self.store.connect() as con:con.execute("INSERT INTO clients(id,user_id,name,period,end_date,referrer_id) VALUES(64,'owner','Test lifetime','1m','2027-01-01',60)")
   self.assertIsNone(self.change('referral',{'client_id':64},'ref-lifetime-00002')['end_date'])
+ def test_new_client_bonus_reactivates_automatically_expired_referrer(self):
+  self.change('edit',{'end_date':'2026-11-01'})
+  self.assertNotIn(self.keys[60],self.runtime.keys)
+  provision=Provisioner(self.db,self.config,self.profiles,self.root/'state',self.runtime,protected_ids=range(1,60))
+  provision.create({**self.data,'referrer_id':60},'referral-auto-create1',self.template,now=self.clock)
+  self.assertTrue(self.meta()['auto_disabled'])
+  self.store.tick(self.clock)
+  self.assertIn(self.keys[60],self.runtime.keys);self.assertFalse(self.meta()['auto_disabled'])
 
 
 if __name__=='__main__':unittest.main()
