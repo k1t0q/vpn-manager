@@ -10,7 +10,7 @@ const iso=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1)
 const date=s=>s?new Date(s.slice(0,10)+'T12:00:00'):null;
 const remaining=c=>c.period==='lifetime'?null:(c.end_date?Math.ceil((c.end_date.includes('T')?Date.parse(c.end_date)-Date.now():date(c.end_date)-date(iso()))/86400000):null);
 const tariff={'trial':'Пробный — 24 часа','14d':'14 дней','2m':'2 месяца','1m':'1 месяц','6m':'6 месяцев','12m':'12 месяцев','lifetime':'Навсегда ∞','imported':'Импорт','1':'1 месяц','6':'6 месяцев','12':'12 месяцев'};
-const formatDate=v=>v?String(v).slice(0,10).split('-').reverse().join('.'):'—';
+const formatDate=v=>!v?'—':String(v).includes('T')?new Date(v).toLocaleString('ru-RU',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):String(v).slice(0,10).split('-').reverse().join('.');
 function lastSeen(w){
  const raw=w?.latestHandshakeAt ?? w?.latestHandshake ?? w?.latest_handshake_at;
  if(!raw)return 'Никогда';
