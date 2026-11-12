@@ -37,6 +37,36 @@ def sql_counts(path):
         return counts
 
 
+def api_writers():
+    """Identify old API owners without publishing cmdlines or environments."""
+    listeners = run(['ss', '-ltnpH'])
+    result = []
+    for line in listeners.splitlines():
+        fields = line.split()
+        if len(fields) < 4 or not re.search(r':(5050|5052)$', fields[3]):
+            continue
+        port = int(fields[3].rsplit(':', 1)[1])
+        for pid in sorted(set(re.findall(r'pid=([0-9]+)', line))):
+            proc = Path('/proc')/pid
+            args = (proc/'cmdline').read_bytes().decode(errors='replace').split('\0')
+            cwd = (proc/'cwd').resolve()
+            scripts = []
+            for arg in args:
+                if arg.endswith('.py') and not arg.startswith('-'):
+                    path = Path(arg) if arg.startswith('/') else cwd/arg
+                    if path.is_file() and str(path.resolve()).startswith(('/opt/vpn-manager/', '/opt/vpn-manager-panel-test/')):
+                        scripts.append(path.resolve())
+            units = [part for part in (proc/'cgroup').read_text().split('/') if part.strip().endswith('.service')]
+            item = dict(port=port, pid=int(pid), service=units[-1].strip() if units else None, scripts=[])
+            for path in scripts:
+                tree = ast.parse(path.read_text())
+                paths = sorted({n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str) and n.value.startswith(('/opt/vpn-manager/', '/srv/vpn-manager-')) and n.value.endswith('.db')})
+                upstreams = sorted({match for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str) for match in re.findall(r'https?://127\.0\.0\.1:[0-9]{2,5}', n.value)})
+                item['scripts'].append(dict(path=str(path), sha256=digest(path), database_paths=paths, loopback_upstreams=upstreams))
+            result.append(item)
+    return result
+
+
 def main():
     if os.geteuid() != 0:
         raise SystemExit('Root required for read-only inspection')
@@ -90,6 +120,14 @@ def main():
         except OSError:
             continue
     report['source_hashes'] = {}
+    report['legacy_api_writers'] = api_writers()
+    # Classification only: raw journal entries can contain command output.
+    try:
+        events = run(['journalctl', '-b', '-u', 'awg-quick@awg-test.service', '-o', 'json', '--no-pager'])
+        messages = [json.loads(line).get('MESSAGE', '') for line in events.splitlines() if line.startswith('{')]
+        report['awg_boot_evidence'] = dict(entries=len(messages), already_exists=any('already exists' in str(m).lower() for m in messages), start_recorded=any('started' in str(m).lower() for m in messages), stop_recorded=any('stopped' in str(m).lower() or 'stopping' in str(m).lower() for m in messages))
+    except (OSError, subprocess.SubprocessError, ValueError):
+        report['awg_boot_evidence'] = dict(unavailable=True)
     report['production_routes'] = []
     for path in (BASE/'app.py', BASE/'awg_adapter.py'):
         report['source_hashes'][str(path)] = digest(path)

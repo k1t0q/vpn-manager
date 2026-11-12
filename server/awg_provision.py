@@ -15,7 +15,7 @@ from pathlib import Path
 import re
 import shutil
 import uuid
-from awg_persistence import billing_date, PeerStore, StateError, atomic_write, peer_blocks, sync_dir
+from awg_persistence import billing_date, subscription_deadline, PeerStore, StateError, atomic_write, peer_blocks, sync_dir
 
 MONTHS={'1m':1,'2m':2,'6m':6,'12m':12}
 BONUS={'1m':14,'6m':30,'12m':60}
@@ -82,9 +82,14 @@ class Provisioner(PeerStore):
                     owner=owners[0][0]
                 referrer=None
                 if values['referrer_id'] is not None:
-                    referrer=con.execute('SELECT * FROM clients WHERE id=? AND user_id=?',
-                                         (values['referrer_id'],owner)).fetchone()
+                    if getattr(self,'cross_owner_referrals',False):
+                        referrer=con.execute('SELECT * FROM clients WHERE id=?',(values['referrer_id'],)).fetchone()
+                    else:
+                        referrer=con.execute('SELECT * FROM clients WHERE id=? AND user_id=?',
+                                             (values['referrer_id'],owner)).fetchone()
                     if referrer is None:raise StateError('Referrer not found')
+                    deleted=con.execute("SELECT 1 FROM sqlite_master WHERE name='awg_deleted_clients'").fetchone()
+                    if deleted and con.execute('SELECT 1 FROM awg_deleted_clients WHERE client_id=?',(values['referrer_id'],)).fetchone():raise StateError('Referrer is archived')
                 before=self.config.read_text()
                 header,blocks=peer_blocks(before)
                 # awg-quick permits repeated PostUp/PostDown lines. Preserve
@@ -150,7 +155,7 @@ class Provisioner(PeerStore):
                     refmeta=json.loads(previous)
                     if str(refmeta['client_id'])!=str(referrer['id']):
                         raise StateError('Referrer metadata mismatch')
-                    referral_end=self._referral_end(referrer,bonus,billing_date(now))
+                    referral_end=self._referral_end(referrer,bonus,billing_date(now),now)
                     refmeta['end_date']=referral_end
                     related.append(dict(cid=str(referrer['id']),before=previous,
                                         after=json.dumps(refmeta,ensure_ascii=False,indent=2)))
@@ -198,7 +203,11 @@ class Provisioner(PeerStore):
                 return result
 
     @staticmethod
-    def _referral_end(referrer,days,today):
+    def _referral_end(referrer,days,today,now=None):
+        raw=referrer['end_date']
+        if raw and len(raw)>10 and now is not None:
+            old=subscription_deadline(referrer['period'],raw)
+            return (max(now,old)+timedelta(days=days)).isoformat()
         try:base=max(today,date.fromisoformat(str(referrer['end_date'])[:10]))
         except (ValueError,TypeError):base=today
         return (base+timedelta(days=days)).isoformat()

@@ -4,7 +4,8 @@ import hashlib,ipaddress,json,os,re,sqlite3,uuid
 from awg_persistence import PeerStore,StateError,atomic_write,peer_blocks,sync_dir,subscription_deadline,billing_date
 from awg_provision import deadline,MONTHS,BONUS
 
-PERIODS={*MONTHS,'14d','trial','lifetime','imported'}
+ALIASES={'1':'1m','6':'6m','12':'12m'}
+PERIODS={*MONTHS,*ALIASES,'14d','trial','lifetime','imported'}
 
 
 class Subscriptions(PeerStore):
@@ -38,6 +39,16 @@ class Subscriptions(PeerStore):
     if (public in self.runtime.peers())!=bool(before_block):raise StateError('Target disk/runtime drift requires review')
     updates,event,description,notification=self._plan(con,row,meta,kind,data,now)
     updated=dict(row);updated.update(updates)
+    held=False
+    hold=getattr(self,'expiry_hold',{})
+    if cid in hold:
+     releases=con.execute("SELECT 1 FROM sqlite_master WHERE name='initial_expiry_hold_releases'").fetchone()
+     released=bool(releases and con.execute('SELECT 1 FROM initial_expiry_hold_releases WHERE client_id=?',(cid,)).fetchone())
+     changed=hold[cid]!=row['end_date'] or hold[cid]!=updated['end_date'] or updated['period']!=row['period']
+     if changed and not released:
+      con.execute('CREATE TABLE IF NOT EXISTS initial_expiry_hold_releases(client_id INTEGER PRIMARY KEY,released_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)')
+      con.execute('INSERT OR IGNORE INTO initial_expiry_hold_releases(client_id) VALUES(?)',(cid,))
+     held=not changed and not released
     end=subscription_deadline(updated['period'],updated['end_date'])
     after_block=before_block
     if kind=='expire':
@@ -45,7 +56,7 @@ class Subscriptions(PeerStore):
      meta['auto_disabled']=bool(before_block) or bool(meta.get('auto_disabled'))
      meta['disabled_reason']='expired' if meta['auto_disabled'] else 'manual'
      after_block=None
-    elif end is not None and end<=now:
+    elif end is not None and end<=now and not held:
      if before_block:
       meta['disabled_peer_block']=before_block;meta['auto_disabled']=True;meta['disabled_reason']='expired'
      after_block=None
@@ -88,7 +99,7 @@ class Subscriptions(PeerStore):
   notification=None
   if kind=='extend':
    if set(data)!={'period'} or data['period'] not in PERIODS-{'imported'}:raise StateError('Invalid renewal tariff')
-   period=data['period']
+   period=ALIASES.get(data['period'],data['period'])
    if row['period']=='lifetime':updates=dict(period='lifetime',end_date=None)
    elif period=='trial':updates=dict(period=period,end_date=deadline(billing_date(now),period,now))
    else:
@@ -113,7 +124,9 @@ class Subscriptions(PeerStore):
    ref=merged.get('referrer_id')
    if ref is not None:
     if type(ref) is not int or str(ref)==str(row['id']) or str(ref) in self.protected:raise StateError('Invalid staging referrer')
-    if not con.execute('SELECT 1 FROM clients WHERE id=? AND user_id=?',(ref,row['user_id'])).fetchone():raise StateError('Referrer not found')
+    query='SELECT 1 FROM clients WHERE id=?'+('' if getattr(self,'cross_owner_referrals',False) else ' AND user_id=?')
+    args=(ref,) if getattr(self,'cross_owner_referrals',False) else (ref,row['user_id'])
+    if not con.execute(query,args).fetchone():raise StateError('Referrer not found')
    return updates,'edited','Client details updated',None
   if kind=='expire':
    end=subscription_deadline(row['period'],row['end_date'])
@@ -127,8 +140,8 @@ class Subscriptions(PeerStore):
   if kind=='referral':
    if set(data)-{'client_id','bonus_period'} or type(data.get('client_id')) is not int:raise StateError('Invalid referral request')
    source=con.execute('SELECT * FROM clients WHERE id=?',(data['client_id'],)).fetchone()
-   if source is None or source['referrer_id']!=row['id'] or source['user_id']!=row['user_id'] or str(source['id']) in self.protected:raise StateError('Invalid referral relationship')
-   period=data.get('bonus_period',source['period']);days=BONUS.get(period)
+   if source is None or source['referrer_id']!=row['id'] or (source['user_id']!=row['user_id'] and not getattr(self,'cross_owner_referrals',False)) or str(source['id']) in self.protected:raise StateError('Invalid referral relationship')
+   period=data.get('bonus_period',source['period']);days=BONUS.get(ALIASES.get(period,period))
    if days is None:raise StateError('Tariff has no referral bonus')
    con.execute('CREATE TABLE IF NOT EXISTS referral_awards(referred_client_id INTEGER PRIMARY KEY,referrer_client_id INTEGER NOT NULL,bonus_days INTEGER NOT NULL,awarded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)')
    if con.execute('SELECT 1 FROM referral_awards WHERE referred_client_id=?',(source['id'],)).fetchone():raise StateError('Referral bonus already awarded')

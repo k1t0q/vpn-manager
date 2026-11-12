@@ -40,9 +40,16 @@ class Handler(BaseHTTPRequestHandler):
     with self.server.bridge.store.connect() as con:
      deleted=con.execute("SELECT 1 FROM sqlite_master WHERE name='awg_deleted_clients'").fetchone()
      rows=con.execute('SELECT id,name,phone,start_date,end_date,period,note,created_at,referrer_id,wg_client_id FROM clients'+(' WHERE id NOT IN (SELECT client_id FROM awg_deleted_clients)' if deleted else '')+' ORDER BY id').fetchall()
-    return self.reply(200,dict(ok=True,clients=[dict(row) for row in rows]))
+     delivery=con.execute("SELECT 1 FROM sqlite_master WHERE name='profile_delivery'").fetchone()
+     delivered={str(row[0]):row[1] for row in con.execute('SELECT client_id,delivered_at FROM profile_delivery')} if delivery else {}
+    clients=[dict(row) for row in rows]
+    for client in clients:
+     client['delivered_at']=delivered.get(str(client['id']))
+     client['period']={'1':'1m','6':'6m','12':'12m'}.get(client['period'],client['period'])
+    return self.reply(200,dict(ok=True,clients=clients))
    if self.command=='GET' and self.path=='/api/managed/health':
-    return self.reply(200,dict(ok=True,auto_expiry=True,subscriptions=True,scheduler_ok=getattr(self.server,'scheduler_ok',False),notification_delivery='panel-only'))
+    test_only=getattr(self.server,'test_only',True)
+    return self.reply(200,dict(ok=True,auto_expiry=True,subscriptions=True,scheduler_ok=getattr(self.server,'scheduler_ok',False),notification_delivery='panel-only',managed_test_only=test_only,profile_delivery=not test_only,profile_import=not test_only))
    if self.command=='GET' and self.path=='/api/wg/clients':
     peers=collect(self.server.bridge.store.db_path,self.server.bridge.store.profiles)
     with self.server.bridge.store.connect() as con:

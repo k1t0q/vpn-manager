@@ -70,7 +70,9 @@ def register(app,authorized,db_connect,managed=None):
  @app.post('/api/clients/<int:client_id>/delete')
  @authorized
  def delete(client_id):
-  if app.config.get('MANAGED_AWG') and managed:return managed('/api/wg/client/'+str(client_id)+'/delete')
+  if app.config.get('MANAGED_AWG') and managed:
+   path='/api/wg/client/'+str(client_id)+'/delete' if app.config.get('TEST_ONLY',True) else '/api/managed/clients/'+str(client_id)+'/delete'
+   return managed(path)
   with db_connect() as con:
    con.execute('BEGIN IMMEDIATE');row=con.execute('SELECT id,user_id,wg_client_id FROM clients WHERE id=?',(client_id,)).fetchone()
    if row is None:return jsonify(ok=False,error='Client not found'),404

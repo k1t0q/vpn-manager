@@ -3,7 +3,7 @@
 const API=window.VPN_MANAGER_CONFIG.API_BASE;
 const $=id=>document.getElementById(id);
 const TOKEN_KEY='vpn_manager_sqlite_session_v1';
-let token=sessionStorage.getItem(TOKEN_KEY)||'',clients=[],wg=[],wgAvailable=false;
+let token=sessionStorage.getItem(TOKEN_KEY)||'',clients=[],wg=[],wgAvailable=false,capabilities={};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const msg=(t,bad=false)=>{$('status').textContent=t;$('status').className=bad?'m-error':'m-ok'};
 const iso=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')};
@@ -82,22 +82,29 @@ function render(){
  +(hasWg?'<button data-act="wg-toggle" data-id="'+c.id+'" class="'+(peer?.enabled?'warning':'success-toggle')+'">'+(peer?.enabled?'Отключить':'Включить')+'</button>':'<span></span>')
  +'<button data-act="delete" data-id="'+c.id+'" class="danger">Удалить</button>'
  +(c.referrer_id?'<button data-act="referral" data-id="'+c.id+'" class="secondary referral-action">Бонус рефералу</button>':'')
+ +(capabilities.profile_delivery?'<button data-act="delivery" data-id="'+c.id+'" class="secondary referral-action">'+(c.delivered_at?'Передан ✓':'Отметить передачу')+'</button>':'')
  +'</div>';
 };
  const remain=c=>c.period==='lifetime'?'∞':remaining(c)===null?'—':String(remaining(c));
  const label=c=>esc(tariff[c.period]||c.period||'—');
  const referred=c=>esc(clients.find(x=>String(x.id)===String(c.referrer_id))?.name||'—');
  const inviteCount=c=>clients.filter(x=>String(x.referrer_id||'')===String(c.id)).length;
+ const deliveryBadge=c=>c.delivered_at?'<small class="green">Профиль передан: '+esc(formatDate(c.delivered_at))+'</small>':'';
  const inviteBadge=c=>inviteCount(c)?'<span class="invite-count">Пригласил: '+inviteCount(c)+'</span>':'';
- $('rows').innerHTML=shown.map(c=>'<tr data-client-id="'+c.id+'"><td><b>'+esc(c.name)+'</b>'+inviteBadge(c)+(c.note?'<small>'+esc(c.note)+'</small>':'')+'</td><td>'+esc(c.phone||'—')+'</td><td>'+referred(c)+'</td><td>'+wgDisplay(c)+'</td><td>'+label(c)+'</td><td>'+formatDate(c.start_date)+'</td><td>'+ (c.period==='lifetime'?'Навсегда':formatDate(c.end_date))+'</td><td><b>'+remain(c)+'</b></td><td>'+subscriptionStatus(c)+'</td><td>'+actions(c)+'</td></tr>').join('');
- $('cards').innerHTML=shown.map(c=>'<article class="card" data-client-id="'+c.id+'"><div class="card-top"><div><h3 class="card-vpn-name">'+esc(peerLabel(c))+'</h3><div class="card-client-name">'+esc(c.name)+'</div>'+inviteBadge(c)+(c.phone?'<small>'+esc(c.phone)+'</small>':'')+'</div>'+subscriptionStatus(c)+'</div><div class="info"><div><small>Тариф</small><b>'+label(c)+'</b></div><div><small>До</small><b>'+(c.period==='lifetime'?'Навсегда':formatDate(c.end_date))+'</b></div><div><small>Осталось</small><b>'+remain(c)+' дн.</b></div></div>'+(c.referrer_id?'<div class="note">Пригласил: '+referred(c)+'</div>':'')+'<div class="note mobile-vpn-note">'+wgDisplay(c,true)+'</div><details class="manage"><summary>Управление подпиской</summary><div class="manage-body">'+actions(c)+'</div></details></article>').join('');
+ $('rows').innerHTML=shown.map(c=>'<tr data-client-id="'+c.id+'"><td><b>'+esc(c.name)+'</b>'+inviteBadge(c)+deliveryBadge(c)+(c.note?'<small>'+esc(c.note)+'</small>':'')+'</td><td>'+esc(c.phone||'—')+'</td><td>'+referred(c)+'</td><td>'+wgDisplay(c)+'</td><td>'+label(c)+'</td><td>'+formatDate(c.start_date)+'</td><td>'+ (c.period==='lifetime'?'Навсегда':formatDate(c.end_date))+'</td><td><b>'+remain(c)+'</b></td><td>'+subscriptionStatus(c)+'</td><td>'+actions(c)+'</td></tr>').join('');
+ $('cards').innerHTML=shown.map(c=>'<article class="card" data-client-id="'+c.id+'"><div class="card-top"><div><h3 class="card-vpn-name">'+esc(peerLabel(c))+'</h3><div class="card-client-name">'+esc(c.name)+'</div>'+inviteBadge(c)+deliveryBadge(c)+(c.phone?'<small>'+esc(c.phone)+'</small>':'')+'</div>'+subscriptionStatus(c)+'</div><div class="info"><div><small>Тариф</small><b>'+label(c)+'</b></div><div><small>До</small><b>'+(c.period==='lifetime'?'Навсегда':formatDate(c.end_date))+'</b></div><div><small>Осталось</small><b>'+remain(c)+' дн.</b></div></div>'+(c.referrer_id?'<div class="note">Пригласил: '+referred(c)+'</div>':'')+'<div class="note mobile-vpn-note">'+wgDisplay(c,true)+'</div><details class="manage"><summary>Управление подпиской</summary><div class="manage-body">'+actions(c)+'</div></details></article>').join('');
  $('empty').classList.toggle('hidden',shown.length>0);
  const current=$('referrer').value;
  $('referrer').innerHTML='<option value="">Никто</option>'+clients.map(c=>'<option value="'+c.id+'">'+esc(c.name)+'</option>').join('');
  $('referrer').value=current;
 }
 async function refresh(){
- const [a,b]=await Promise.all([call('/api/clients'),call('/api/wg/clients').catch(e=>({clients:[],error:e.message}))]);
+ const [a,b,caps]=await Promise.all([call('/api/clients'),call('/api/wg/clients').catch(e=>({clients:[],error:e.message})),call('/health').catch(()=>({}))]);
+ capabilities=caps;
+ let importer=$('importProfiles');
+ if(!importer){importer=document.createElement('button');importer.id='importProfiles';importer.className='secondary';importer.textContent='Импорт профилей';$('exportCsv').insertAdjacentElement('afterend',importer);importer.onclick=importProfiles}
+ importer.hidden=!capabilities.profile_import;
+ importer.style.display=capabilities.profile_import?'':'none';
  clients=dataList(a);
  clients.sort((a,b)=>{
   const ad=Date.parse(a.created_at||'')||0,bd=Date.parse(b.created_at||'')||0;
@@ -114,6 +121,17 @@ $('login').onsubmit=async e=>{
  $('code').value='';await refresh();$('loginPane').classList.add('m-hide');$('workspace').classList.remove('m-hide');
  }catch(e){token='';sessionStorage.removeItem(TOKEN_KEY);msg('Ошибка входа: '+e.message,true)}
 };
+async function importProfiles(){
+ const button=$('importProfiles');if(button)button.disabled=true;
+ try{
+  const result=await call('/api/clients/import');const candidates=result.candidates||[];
+  if(!candidates.length){msg('Все найденные профили AmneziaWG уже учтены');return}
+  const names=candidates.map(c=>c.name+' · '+c.address).join('\n');
+  if(!confirm('Импортировать существующие профили ('+candidates.length+')?\n\n'+names+'\n\nКлючи, IP и конфигурации сохранятся.'))return;
+  const imported=await call('/api/clients/import',{method:'POST',body:JSON.stringify({client_ids:candidates.map(c=>c.id).sort((a,b)=>a-b)})});
+  await refresh();msg('Импортировано профилей: '+imported.imported.length);
+ }catch(err){msg('Импорт не выполнен: '+err.message,true)}finally{if(button)button.disabled=false}
+}
 function peerLabel(c){
  const raw=wg.find(w=>String(w.id)===String(c.wg_client_id))?.name||'';
  const match=String(raw).trim().match(/^((?:CAESAR|CEASER) BOT #\d+)(?=\s|$)/i);
@@ -167,8 +185,9 @@ $('create').onsubmit=async e=>{
  e.preventDefault();
  const form=new FormData(e.currentTarget),p=Object.fromEntries(form);
  if(!p.referrer_id)delete p.referrer_id;else p.referrer_id=Number(p.referrer_id);
- if(!p.name.startsWith('STAGING TEST '))p.name='STAGING TEST '+p.name;
- if(!confirm('Создать отдельный тестовый профиль «'+p.name+'»?'))return;
+ const testOnly=capabilities.managed_test_only!==false;
+ if(testOnly&&!p.name.startsWith('STAGING TEST '))p.name='STAGING TEST '+p.name;
+ if(!confirm('Создать отдельный '+(testOnly?'тестовый ':'')+'профиль «'+p.name+'»?'))return;
  const submit=e.currentTarget.querySelector('[type="submit"]');if(submit)submit.disabled=true;
  try{
   const d=await call('/api/clients/provision',{method:'POST',body:JSON.stringify(p)});
@@ -195,7 +214,11 @@ async function handleClientAction(e){
   return;
  }
  try{
- if(btn.dataset.act==='referral'){
+ if(btn.dataset.act==='delivery'){
+ if(c.delivered_at&&!confirm('Снять отметку о передаче профиля «'+c.name+'»?'))return;
+ btn.disabled=true;
+ try{await call('/api/clients/'+id+'/delivery',{method:'POST',body:JSON.stringify({delivered:!c.delivered_at})});await refresh();msg(c.delivered_at?'Отметка снята':'Передача профиля отмечена')}finally{btn.disabled=false}
+ }else if(btn.dataset.act==='referral'){
  const ref=clients.find(x=>String(x.id)===String(c.referrer_id));
  if(!ref)throw Error('Пригласивший клиент не найден');
  const dialog=$('referralDialog');
@@ -375,6 +398,7 @@ function csvCell(value){const v=String(value??'');return '"'+(/^[=+@\-\t\r]/.tes
 $('exportCsv').onclick=()=>{
  const cols=['ID','Имя','Телефон','Тариф','Начало','Окончание','Осталось дней','WG ID','WG статус','Пригласил','Заметка'];
  const data=clients.map(c=>[c.id,c.name,c.phone,c.period,c.start_date,c.end_date,remaining(c),c.wg_client_id,!wgAvailable?'Статус недоступен':c.wg_client_id?(wg.find(w=>String(w.id)===String(c.wg_client_id))?.enabled?'Включён':'Выключен или не найден'):'Нет',clients.find(x=>String(x.id)===String(c.referrer_id))?.name||'',c.note]);
+ if(capabilities.profile_delivery){cols.push('Профиль передан');data.forEach((row,i)=>row.push(clients[i].delivered_at||''))}
  const csv='\uFEFF'+[cols,...data].map(row=>row.map(csvCell).join(';')).join('\r\n');
  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
  const a=document.createElement('a');a.href=url;a.download='vpn-manager-clients-'+iso()+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);
