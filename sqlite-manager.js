@@ -3,7 +3,7 @@
 const API=window.VPN_MANAGER_CONFIG.API_BASE;
 const $=id=>document.getElementById(id);
 const TOKEN_KEY='vpn_manager_sqlite_session_v1';
-let token=sessionStorage.getItem(TOKEN_KEY)||'',clients=[],wg=[];
+let token=sessionStorage.getItem(TOKEN_KEY)||'',clients=[],wg=[],wgAvailable=false;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const msg=(t,bad=false)=>{$('status').textContent=t;$('status').className=bad?'m-error':'m-ok'};
 const iso=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')};
@@ -28,6 +28,7 @@ function subscriptionStatus(c){
  return d<=0?'<span class="status expired">Истекла</span>':d<=7?'<span class="status soon">Скоро</span>':'<span class="status active">Активна</span>';
 }
 function wgDisplay(c,mobile=false){
+ if(!wgAvailable)return '<span class="wg-status none">Статус VPN недоступен</span>';
  if(!c.wg_client_id)return '<span class="wg-status none">Не привязан</span>';
  const w=wg.find(x=>String(x.id)===String(c.wg_client_id));
  if(!w)return '<span class="wg-status off">Не найден</span>';
@@ -94,7 +95,7 @@ async function refresh(){
   const ad=Date.parse(a.created_at||'')||0,bd=Date.parse(b.created_at||'')||0;
   return bd-ad || Number(b.id||0)-Number(a.id||0);
  });
- wg=b.clients||[];render();
+ wg=b.clients||[];wgAvailable=!b.error;render();
  msg(b.error?'Клиенты загружены, AmneziaWG недоступен: '+b.error:'Данные обновлены',!!b.error);
 }
 $('toggleCode').onclick=()=>{const field=$('code'),visible=field.type==='password';field.type=visible?'text':'password';$('toggleCode').textContent=visible?'Скрыть':'Показать';$('toggleCode').setAttribute('aria-label',visible?'Скрыть код':'Показать код')};
