@@ -32,7 +32,7 @@ def create_app(config=None):
  @app.errorhandler(sqlite3.Error)
  def db_error(e):return jsonify(ok=False,error='Database operation failed'),503
  @app.get('/health')
- def health():return jsonify(ok=True,version='sqlite-awg-panel-1',auto_expiry=False)
+ def health():return jsonify(ok=True,version='sqlite-awg-panel-2',auto_expiry=False,login_configured=bool(app.config['ADMIN_CODE']),awg_bridge_configured=bool(app.config['AWG_TOKEN']))
  @app.post('/auth/login')
  def login():
   now=time.time();key=request.remote_addr;recent=[t for t in attempts.get(key,[]) if t>now-300];attempts[key]=recent
