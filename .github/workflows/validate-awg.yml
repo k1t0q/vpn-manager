@@ -5,6 +5,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      rollback_sha:
+        description: 'Optional full SHA of a previously healthy staging release'
+        required: false
+        type: string
 permissions:
   contents: read
 jobs:
@@ -24,3 +29,38 @@ jobs:
       - run: node --test tests/recovery.test.mjs
       - run: node --check sqlite-manager.js
       - run: python -m compileall -q server
+
+  deploy_staging:
+    needs: test
+    if: ${{ vars.STAGING_DEPLOY_ENABLED == 'true' && github.ref == 'refs/heads/awg-migration-2026-11' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !inputs.rollback_sha }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: vpn-staging
+    concurrency:
+      group: vpn-manager-staging
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy isolated staging release
+        env:
+          DEPLOY_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: bash deploy/actions-ssh.sh
+  rollback_staging:
+    if: ${{ vars.STAGING_DEPLOY_ENABLED == 'true' && github.ref == 'refs/heads/awg-migration-2026-11' && github.event_name == 'workflow_dispatch' && inputs.rollback_sha != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: vpn-staging
+    concurrency:
+      group: vpn-manager-staging
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore previously healthy staging release
+        env:
+          DEPLOY_ACTION: rollback
+          DEPLOY_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+          RELEASE_SHA: ${{ inputs.rollback_sha }}
+        run: bash deploy/actions-ssh.sh
