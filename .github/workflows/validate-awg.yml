@@ -32,7 +32,7 @@ jobs:
 
   deploy_staging:
     needs: test
-    if: ${{ vars.STAGING_DEPLOY_ENABLED == 'true' && github.ref == 'refs/heads/awg-migration-2026-11' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !inputs.rollback_sha }}
+    if: ${{ vars.STAGING_DEPLOY_ENABLED != 'false' && github.ref == 'refs/heads/awg-migration-2026-11' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !inputs.rollback_sha }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: vpn-staging
@@ -48,7 +48,7 @@ jobs:
           RELEASE_SHA: ${{ github.sha }}
         run: bash deploy/actions-ssh.sh
   rollback_staging:
-    if: ${{ vars.STAGING_DEPLOY_ENABLED == 'true' && github.ref == 'refs/heads/awg-migration-2026-11' && github.event_name == 'workflow_dispatch' && inputs.rollback_sha != '' }}
+    if: ${{ vars.STAGING_DEPLOY_ENABLED != 'false' && github.ref == 'refs/heads/awg-migration-2026-11' && github.event_name == 'workflow_dispatch' && inputs.rollback_sha != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: vpn-staging
