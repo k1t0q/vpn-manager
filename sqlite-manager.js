@@ -127,11 +127,18 @@ function addMonthsISO(base,months){
  date.setUTCDate(Math.min(parts[2],last));
  return date.toISOString().slice(0,10);
 }
+function localDateTime(value){
+ const d=new Date(value);if(!Number.isFinite(d.getTime()))return '';
+ return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')+'T'+[d.getHours(),d.getMinutes(),d.getSeconds()].map(n=>String(n).padStart(2,'0')).join(':');
+}
 function syncEditEndDate(){
  const f=$('editForm'),period=f.elements.period.value,end=f.elements.end_date;
  if(period==='lifetime'){end.disabled=true;end.value='';return}
  end.disabled=false;
- if(!end.value){const months={'1m':1,'2m':2,'6m':6,'12m':12}[period]||1;end.value=period==='trial'?dateOffsetISO(iso(),1):period==='14d'?dateOffsetISO(iso(),14):addMonthsISO(iso(),months)}
+ const previous=end.value;
+ end.type=period==='trial'?'datetime-local':'date';end.step=period==='trial'?'1':'1';
+ if(previous)end.value=period==='trial'?(previous.includes('T')?previous:previous+'T12:00:00'):previous.slice(0,10);
+ if(!end.value){const months={'1m':1,'2m':2,'6m':6,'12m':12}[period]||1;end.value=period==='trial'?localDateTime(Date.now()+86400000):period==='14d'?dateOffsetISO(iso(),14):addMonthsISO(iso(),months)}
 }
 function dateOffsetISO(base,days){
  const date=new Date(base+'T00:00:00Z');
@@ -140,6 +147,7 @@ function dateOffsetISO(base,days){
 }
 function dateDaysRemaining(end){
  if(!end)return null;
+ if(end.includes('T'))return Math.ceil((new Date(end).getTime()-Date.now())/86400000);
  return Math.round((Date.parse(end+'T00:00:00Z')-Date.parse(iso()+'T00:00:00Z'))/86400000);
 }
 function syncEditDays(){
@@ -193,13 +201,14 @@ async function handleClientAction(e){
  dialog.showModal();
  dialog.focus({preventScroll:true});
  }else if(btn.dataset.act==='edit'){
- const f=$('editForm');for(const key of ['id','name','phone','note','start_date','period','end_date'])f.elements[key].value=key==='end_date'?(c[key]||'').slice(0,10):(c[key]??'');
+ const f=$('editForm');f.elements.end_date.type=c.period==='trial'?'datetime-local':'date';f.elements.end_date.step='1';
+ for(const key of ['id','name','phone','note','start_date','period','end_date'])f.elements[key].value=key==='end_date'?(c.period==='trial'?localDateTime(c[key]):(c[key]||'').slice(0,10)):(c[key]??'');
  const inviter=$('editReferrer');
  inviter.innerHTML='<option value="">Никто</option>'+clients.filter(x=>String(x.id)!==String(c.id)).map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join('');
  inviter.value=c.referrer_id==null?'':String(c.referrer_id);
- f.dataset.original=JSON.stringify(Object.fromEntries(new FormData(f)));
  syncEditEndDate();
  syncEditDays();
+ f.dataset.original=JSON.stringify(Object.fromEntries(new FormData(f)));
  $('editDialog').showModal();
  requestAnimationFrame(()=>{if(document.activeElement?.blur)document.activeElement.blur()});
  }else if(btn.dataset.act==='wg-toggle'){
@@ -333,11 +342,12 @@ $('editDays').addEventListener('input',()=>{
  if(f.elements.period.value==='lifetime'||input.value==='')return;
  const days=Number(input.value);
  if(!Number.isSafeInteger(days)||days<0||days>36500){$('editDaysHint').textContent='Укажите от 0 до 36500 дней';return}
- f.elements.end_date.value=dateOffsetISO(iso(),days);
+ f.elements.end_date.value=f.elements.period.value==='trial'?localDateTime(Date.now()+days*86400000):dateOffsetISO(iso(),days);
  $('editDaysHint').textContent='Дата окончания: '+f.elements.end_date.value+' · Осталось '+days+' дн.';
 });
 $('editForm').onsubmit=async e=>{
  e.preventDefault();const d=Object.fromEntries(new FormData(e.currentTarget));const id=Number(d.id);
+ const selectedPeriod=d.period;
  delete d.id;
  if(!('note' in d))d.note=clients.find(c=>Number(c.id)===id)?.note||'';
  d.referrer_id=d.referrer_id?Number(d.referrer_id):null;
@@ -345,7 +355,7 @@ $('editForm').onsubmit=async e=>{
  else {
   if(!['trial','14d','1m','2m','6m','12m','imported'].includes(d.period)){alert('Некорректный тариф. Изменения не сохранены.');return}
   if(!d.end_date){alert('Укажите дату окончания подписки. Изменения не сохранены.');return}
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(d.end_date)||!Number.isFinite(Date.parse(d.end_date+'T00:00:00Z'))){alert('Некорректная дата окончания.');return}
+  if(d.period==='trial'?!Number.isFinite(new Date(d.end_date).getTime()):(!/^\d{4}-\d{2}-\d{2}$/.test(d.end_date)||!Number.isFinite(Date.parse(d.end_date+'T00:00:00Z')))){alert('Некорректная дата окончания.');return}
  }
  const original=JSON.parse(e.currentTarget.dataset.original||'{}');
  for(const key of Object.keys(d)){
@@ -353,6 +363,7 @@ $('editForm').onsubmit=async e=>{
   if(d[key]===old || (key==='end_date'&&d.period==='lifetime'&&!old))delete d[key];
  }
  if(!Object.keys(d).length){$('editDialog').close();return}
+ if(selectedPeriod==='trial'&&d.end_date)d.end_date=new Date(d.end_date).toISOString();
  try{await call('/api/clients/'+id,{method:'PATCH',body:JSON.stringify(d)});$('editDialog').close();await refresh();msg('Клиент обновлён')}
  catch(err){const message='Не удалось сохранить изменения: '+err.message;msg(message,true);alert(message)}
 };
