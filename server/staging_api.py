@@ -33,7 +33,14 @@ def create_app(config=None):
  @app.errorhandler(sqlite3.Error)
  def db_error(e):return jsonify(ok=False,error='Database operation failed'),503
  @app.get('/health')
- def health():return jsonify(ok=True,version='sqlite-awg-panel-2',auto_expiry=False,login_configured=bool(app.config['ADMIN_CODE']),awg_bridge_configured=bool(app.config['AWG_TOKEN']),managed_test_only=bool(app.config['MANAGED_AWG']))
+ def health():
+  capabilities={}
+  if app.config['MANAGED_AWG'] and app.config['AWG_TOKEN']:
+   try:
+    result=requests.get(app.config['AWG_URL'].rstrip('/')+'/api/managed/health',headers={'X-VPN-Token':app.config['AWG_TOKEN']},timeout=2)
+    if result.ok:capabilities=result.json()
+   except (requests.RequestException,ValueError):pass
+  return jsonify(ok=True,version='sqlite-awg-panel-2',auto_expiry=bool(capabilities.get('auto_expiry')),subscriptions=bool(capabilities.get('subscriptions')),scheduler_ok=bool(capabilities.get('scheduler_ok')),notification_delivery=capabilities.get('notification_delivery','unconfigured'),login_configured=bool(app.config['ADMIN_CODE']),awg_bridge_configured=bool(app.config['AWG_TOKEN']),managed_test_only=bool(app.config['MANAGED_AWG']))
  @app.post('/auth/login')
  def login():
   now=time.time();key=request.remote_addr;recent=[t for t in attempts.get(key,[]) if t>now-300];attempts[key]=recent
@@ -71,6 +78,12 @@ def create_app(config=None):
  @app.post('/api/clients/provision')
  @authorized
  def provision():return managed('/api/managed/create')
+ @app.post('/api/clients/<int:client_id>/referral')
+ @authorized
+ def managed_referral(client_id):return managed('/api/managed/clients/'+str(client_id)+'/referral')
+ @app.get('/api/notifications')
+ @authorized
+ def notifications():return managed('/api/managed/notifications',method='GET')
  from sqlite_client_crud import register
  register(app,authorized,db_connect,managed)
  from sqlite_referral_safe import register

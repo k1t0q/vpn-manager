@@ -17,10 +17,25 @@ import sqlite3
 import subprocess
 import tempfile
 import uuid
+from datetime import date, datetime, time, timezone
 
 
 class StateError(RuntimeError):
     pass
+
+
+def subscription_deadline(period, end):
+    if period == 'lifetime' or not end:
+        return None
+    try:
+        if len(end) == 10:
+            return datetime.combine(date.fromisoformat(end), time(), timezone.utc)
+        value = datetime.fromisoformat(end)
+        if value.tzinfo is None:
+            raise ValueError()
+        return value.astimezone(timezone.utc)
+    except (ValueError, TypeError):
+        raise StateError('Invalid subscription deadline') from None
 
 
 def atomic_write(path, data):
@@ -236,7 +251,7 @@ class PeerStore:
         sync_dir(self.state)
         return direction
 
-    def toggle(self, cid, enabled, request_id, allow_protected=False):
+    def toggle(self, cid, enabled, request_id, allow_protected=False, now=None):
         if type(enabled) is not bool:
             raise StateError('Enabled must be boolean')
         if not re.fullmatch(r'[A-Za-z0-9_-]{16,128}', request_id):
@@ -264,6 +279,9 @@ class PeerStore:
                 meta = json.loads(before_meta)
                 if str(meta['client_id']) != cid:
                     raise StateError('Metadata client mismatch')
+                deadline = subscription_deadline(meta.get('period'), meta.get('end_date'))
+                if enabled and deadline is not None and deadline <= (now or datetime.now(timezone.utc)):
+                    raise StateError('Subscription expired; renew it before enabling VPN')
                 address = str(ipaddress.ip_address(meta['address'])) + '/32'
                 public = meta['public_key']
                 before = self.config.read_text()
@@ -295,6 +313,8 @@ class PeerStore:
                 if after_block:
                     after = after.rstrip() + '\n\n' + after_block.rstrip() + '\n'
                 meta['enabled'] = enabled
+                meta['auto_disabled'] = False
+                meta['disabled_reason'] = None if enabled else 'manual'
                 after_meta = json.dumps(meta, ensure_ascii=False, indent=2)
                 result = {'ok': True, 'id': cid, 'enabled': enabled}
                 journal = dict(request_id=request_id, cid=cid, public_key=public,

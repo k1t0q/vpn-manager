@@ -21,7 +21,7 @@ def register(app,authorized,db_connect,managed=None):
  @app.patch('/api/clients/<int:client_id>')
  @authorized
  def edit(client_id):
-  if app.config.get('MANAGED_AWG'):return jsonify(ok=False,error='Managed editing is not installed'),503
+  if app.config.get('MANAGED_AWG') and managed:return managed('/api/managed/clients/'+str(client_id)+'/edit')
   d=request.get_json(silent=True)
   if not isinstance(d,dict) or not d or set(d)-{'name','phone','note','start_date','end_date','period','referrer_id'}:return jsonify(ok=False,error='Invalid fields'),400
   try:
@@ -42,7 +42,7 @@ def register(app,authorized,db_connect,managed=None):
  @app.post('/api/clients/<int:client_id>/extend')
  @authorized
  def extend(client_id):
-  if app.config.get('MANAGED_AWG'):return jsonify(ok=False,error='Managed renewal is not installed'),503
+  if app.config.get('MANAGED_AWG') and managed:return managed('/api/managed/clients/'+str(client_id)+'/extend')
   d=request.get_json(silent=True);period=d.get('period') if isinstance(d,dict) else None
   if not isinstance(period,str) or period not in PERIODS or period=='imported':return jsonify(ok=False,error='Invalid period'),400
   with db_connect() as con:

@@ -10,6 +10,7 @@ import subprocess
 from awg_persistence import StateError, peer_blocks
 from awg_provision import Provisioner
 from awg_delete import Deleter
+from awg_subscriptions import Subscriptions
 
 
 class TestBridge:
@@ -29,6 +30,13 @@ class TestBridge:
     def dispatch(self, method, path, data=None, request_id=''):
         if method=='POST' and not re.fullmatch(r'[A-Za-z0-9_-]{16,128}',request_id):
             raise StateError('A stable idempotency key is required')
+        subscription=re.fullmatch(r'/api/managed/clients/([0-9]{1,10})/(edit|extend|referral)',path)
+        if method=='POST' and subscription:
+            cid,kind=subscription.groups()
+            self.guard()
+            service=Subscriptions(self.store.db_path,self.store.config,self.store.profiles,
+                                  self.store.state,self.store.runtime,protected_ids=self.store.protected)
+            return service.change(cid,kind,data,request_id),200,'application/json'
         if method=='POST' and path=='/api/managed/create':
             if not isinstance(data,dict):raise StateError('Invalid client details')
             if not str(data.get('name','')).startswith('STAGING TEST '):

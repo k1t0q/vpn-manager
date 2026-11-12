@@ -8,8 +8,8 @@ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const msg=(t,bad=false)=>{$('status').textContent=t;$('status').className=bad?'m-error':'m-ok'};
 const iso=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')};
 const date=s=>s?new Date(s.slice(0,10)+'T12:00:00'):null;
-const remaining=c=>c.period==='lifetime'?null:(c.end_date?Math.ceil((date(c.end_date)-date(iso()))/86400000):null);
-const tariff={'trial':'Пробный — 24 часа','1m':'1 месяц','6m':'6 месяцев','12m':'12 месяцев','lifetime':'Навсегда ∞','imported':'Импорт','1':'1 месяц','6':'6 месяцев','12':'12 месяцев'};
+const remaining=c=>c.period==='lifetime'?null:(c.end_date?Math.ceil((c.end_date.includes('T')?Date.parse(c.end_date)-Date.now():date(c.end_date)-date(iso()))/86400000):null);
+const tariff={'trial':'Пробный — 24 часа','14d':'14 дней','2m':'2 месяца','1m':'1 месяц','6m':'6 месяцев','12m':'12 месяцев','lifetime':'Навсегда ∞','imported':'Импорт','1':'1 месяц','6':'6 месяцев','12':'12 месяцев'};
 const formatDate=v=>v?String(v).slice(0,10).split('-').reverse().join('.'):'—';
 function lastSeen(w){
  const raw=w?.latestHandshakeAt ?? w?.latestHandshake ?? w?.latest_handshake_at;
@@ -38,7 +38,7 @@ function wgDisplay(c,mobile=false){
 }
 
 async function call(path,opts={}){
- const mutation=opts.method==='POST'&&(path==='/api/clients/provision'||path.startsWith('/api/wg/client/')||/^\/api\/clients\/\d+\/delete$/.test(path));
+ const mutation=['POST','PATCH'].includes(opts.method)&&(path.startsWith('/api/clients/')||path.startsWith('/api/wg/client/'));
  let pendingId='',requestKey='';
  if(mutation){
   const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([path,opts.body||''])));
@@ -131,7 +131,7 @@ function syncEditEndDate(){
  const f=$('editForm'),period=f.elements.period.value,end=f.elements.end_date;
  if(period==='lifetime'){end.disabled=true;end.value='';return}
  end.disabled=false;
- if(!end.value){const months={'1m':1,'6m':6,'12m':12}[period]||1;end.value=addMonthsISO(iso(),months)}
+ if(!end.value){const months={'1m':1,'2m':2,'6m':6,'12m':12}[period]||1;end.value=period==='trial'?dateOffsetISO(iso(),1):period==='14d'?dateOffsetISO(iso(),14):addMonthsISO(iso(),months)}
 }
 function dateOffsetISO(base,days){
  const date=new Date(base+'T00:00:00Z');
@@ -193,10 +193,11 @@ async function handleClientAction(e){
  dialog.showModal();
  dialog.focus({preventScroll:true});
  }else if(btn.dataset.act==='edit'){
- const f=$('editForm');for(const key of ['id','name','phone','start_date','period','end_date'])f.elements[key].value=c[key]??'';
+ const f=$('editForm');for(const key of ['id','name','phone','note','start_date','period','end_date'])f.elements[key].value=key==='end_date'?(c[key]||'').slice(0,10):(c[key]??'');
  const inviter=$('editReferrer');
  inviter.innerHTML='<option value="">Никто</option>'+clients.filter(x=>String(x.id)!==String(c.id)).map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join('');
  inviter.value=c.referrer_id==null?'':String(c.referrer_id);
+ f.dataset.original=JSON.stringify(Object.fromEntries(new FormData(f)));
  syncEditEndDate();
  syncEditDays();
  $('editDialog').showModal();
@@ -342,10 +343,16 @@ $('editForm').onsubmit=async e=>{
  d.referrer_id=d.referrer_id?Number(d.referrer_id):null;
  if(d.period==='lifetime')d.end_date=null;
  else {
-  if(!['1m','6m','12m'].includes(d.period)){alert('Некорректный тариф. Изменения не сохранены.');return}
+  if(!['trial','14d','1m','2m','6m','12m','imported'].includes(d.period)){alert('Некорректный тариф. Изменения не сохранены.');return}
   if(!d.end_date){alert('Укажите дату окончания подписки. Изменения не сохранены.');return}
   if(!/^\d{4}-\d{2}-\d{2}$/.test(d.end_date)||!Number.isFinite(Date.parse(d.end_date+'T00:00:00Z'))){alert('Некорректная дата окончания.');return}
  }
+ const original=JSON.parse(e.currentTarget.dataset.original||'{}');
+ for(const key of Object.keys(d)){
+  const old=key==='referrer_id'?(original[key]?Number(original[key]):null):(original[key]??'');
+  if(d[key]===old || (key==='end_date'&&d.period==='lifetime'&&!old))delete d[key];
+ }
+ if(!Object.keys(d).length){$('editDialog').close();return}
  try{await call('/api/clients/'+id,{method:'PATCH',body:JSON.stringify(d)});$('editDialog').close();await refresh();msg('Клиент обновлён')}
  catch(err){const message='Не удалось сохранить изменения: '+err.message;msg(message,true);alert(message)}
 };
@@ -395,8 +402,10 @@ $('referralForm').addEventListener('submit',async e=>{
  if(!confirm('Начислить +'+bonus+' дней пригласившему? Повторное начисление за одного клиента запрещено.'))return;
  btn.disabled=true;
  try{
-  const result=await call('/api/referrals/award-safe',{method:'POST',body:JSON.stringify({client_id:id,bonus_period:period})});
-  dialog.close();await refresh();msg('Начислено +'+result.bonus_days+' дней');
+  const referred=clients.find(c=>Number(c.id)===id);
+  if(!referred?.referrer_id)throw Error('Пригласивший клиент не найден');
+  await call('/api/clients/'+referred.referrer_id+'/referral',{method:'POST',body:JSON.stringify({client_id:id,bonus_period:period})});
+  dialog.close();await refresh();msg('Реферальный бонус обработан: +'+bonus+' дней; бессрочные подписки сохраняют ∞');
  }catch(err){msg('Ошибка бонуса: '+err.message,true);alert('Ошибка бонуса: '+err.message)}
  finally{btn.disabled=false}
 });

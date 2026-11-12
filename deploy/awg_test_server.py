@@ -7,11 +7,14 @@ from awg_persistence import StateError,AWGRuntime
 from awg_provision import Provisioner
 from awg_test_bridge import TestBridge
 from awg_readonly_bridge import collect
+from awg_subscriptions import Subscriptions
 
 ROOT=Path('/var/lib/vpn-manager-awg-stage')
 
 
 class Handler(BaseHTTPRequestHandler):
+ def setup(self):
+  super().setup();self.connection.settimeout(10)
  def log_message(self,*_):pass
  def reply(self,status,body,content_type='application/json'):
   data=body if isinstance(body,bytes) else json.dumps(body,ensure_ascii=False).encode()
@@ -38,6 +41,8 @@ class Handler(BaseHTTPRequestHandler):
      deleted=con.execute("SELECT 1 FROM sqlite_master WHERE name='awg_deleted_clients'").fetchone()
      rows=con.execute('SELECT id,name,phone,start_date,end_date,period,note,created_at,referrer_id,wg_client_id FROM clients'+(' WHERE id NOT IN (SELECT client_id FROM awg_deleted_clients)' if deleted else '')+' ORDER BY id').fetchall()
     return self.reply(200,dict(ok=True,clients=[dict(row) for row in rows]))
+   if self.command=='GET' and self.path=='/api/managed/health':
+    return self.reply(200,dict(ok=True,auto_expiry=True,subscriptions=True,scheduler_ok=getattr(self.server,'scheduler_ok',False),notification_delivery='panel-only'))
    if self.command=='GET' and self.path=='/api/wg/clients':
     peers=collect(self.server.bridge.store.db_path,self.server.bridge.store.profiles)
     with self.server.bridge.store.connect() as con:
@@ -45,6 +50,11 @@ class Handler(BaseHTTPRequestHandler):
      removed={row[0] for row in con.execute('SELECT client_id FROM awg_deleted_clients')} if deleted else set()
     peers=[peer for peer in peers if peer['client_id'] not in removed]
     return self.reply(200,dict(ok=True,clients=peers,test_only=True))
+   if self.command=='GET' and self.path=='/api/managed/notifications':
+    with self.server.bridge.store.connect() as con:
+     exists=con.execute("SELECT 1 FROM sqlite_master WHERE name='subscription_notifications'").fetchone()
+     rows=con.execute('SELECT client_id,event_type,end_date,created_at FROM subscription_notifications ORDER BY created_at DESC LIMIT 1000').fetchall() if exists else []
+    return self.reply(200,dict(ok=True,notifications=[dict(row) for row in rows],delivery='panel-only'))
    body,status,kind=self.server.bridge.dispatch(self.command,self.path,data,self.headers.get('Idempotency-Key',''))
    return self.reply(status,body,kind)
   except StateError as error:
@@ -79,7 +89,17 @@ def main():
  server=HTTPServer(('127.0.0.1',5054),Handler)
  token=os.environ.get('PANEL_AWG_TOKEN','')
  if len(token)<32:raise SystemExit('Bridge token not configured')
- server.token=token;server.bridge=bridge;server.serve_forever()
+ server.token=token;server.bridge=bridge;server.timeout=1
+ subscriptions=Subscriptions(store.db_path,store.config,store.profiles,store.state,store.runtime,protected_ids=store.protected)
+ import time
+ next_tick=0
+ while True:
+  server.handle_request()
+  if time.monotonic()>=next_tick:
+   try:
+    bridge.guard();subscriptions.tick();server.scheduler_ok=True
+   except Exception:server.scheduler_ok=False  # Never log secret-bearing exceptions.
+   next_tick=time.monotonic()+30
 
 
 if __name__=='__main__':main()
