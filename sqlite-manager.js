@@ -55,11 +55,11 @@ const dataList=d=>{const x=d.clients??d.data??d; if(!Array.isArray(x))throw Erro
 function renderAlerts(){
  const box=$('siteNotifications');if(!box)return;
  const expired=clients.filter(c=>c.period!=='lifetime'&&remaining(c)!==null&&remaining(c)<=0).sort((a,b)=>remaining(a)-remaining(b));
- const soon=clients.filter(c=>c.period!=='lifetime'&&remaining(c)>0&&remaining(c)<7).sort((a,b)=>remaining(a)-remaining(b));
+ const soon=clients.filter(c=>c.period!=='lifetime'&&remaining(c)>0&&remaining(c)<=3).sort((a,b)=>remaining(a)-remaining(b));
  const section=(type,title,items)=>'<details name="vpn-attention" class="attention-group '+type+'"><summary>'+title+' <span class="attention-count">'+items.length+'</span><span class="attention-chevron" aria-hidden="true"></span></summary><div class="attention-list">'+(items.length?items.map(c=>'<button type="button" class="attention-person" data-jump-client="'+c.id+'"><div><b>'+esc(c.name)+'</b><small>До '+esc(formatDate(c.end_date))+'</small></div><strong>'+(type==='expired'?(remaining(c)===0?'Сегодня':Math.abs(remaining(c))+' дн. назад'):remaining(c)+' дн.')+'</strong></button>').join(''):'<div class="attention-empty">Нет клиентов</div>')+'</div></details>';
  box.classList.remove('hidden');
  const open=box.querySelector('.attention-group[open]')?.classList.contains('expired')?'expired':box.querySelector('.attention-group[open]')?.classList.contains('soon')?'soon':null;
- box.innerHTML=section('expired','Истекли',expired)+section('soon','Менее 7 дней',soon);
+ box.innerHTML=section('expired','Истекли',expired)+section('soon','До 3 дней',soon);
  if(open)box.querySelector('.attention-group.'+open)?.setAttribute('open','');
 }
 function render(){
@@ -375,7 +375,7 @@ $('editForm').onsubmit=async e=>{
 function csvCell(value){const v=String(value??'');return '"'+(/^[=+@\-\t\r]/.test(v)?"'"+v:v).replace(/"/g,'""')+'"'}
 $('exportCsv').onclick=()=>{
  const cols=['ID','Имя','Телефон','Тариф','Начало','Окончание','Осталось дней','WG ID','WG статус','Пригласил','Заметка'];
- const data=clients.map(c=>[c.id,c.name,c.phone,c.period,c.start_date,c.end_date,remaining(c),c.wg_client_id,c.wg_client_id?(wg.find(w=>String(w.id)===String(c.wg_client_id))?.enabled?'Включён':'Выключен или не найден'):'Нет',clients.find(x=>String(x.id)===String(c.referrer_id))?.name||'',c.note]);
+ const data=clients.map(c=>[c.id,c.name,c.phone,c.period,c.start_date,c.end_date,remaining(c),c.wg_client_id,!wgAvailable?'Статус недоступен':c.wg_client_id?(wg.find(w=>String(w.id)===String(c.wg_client_id))?.enabled?'Включён':'Выключен или не найден'):'Нет',clients.find(x=>String(x.id)===String(c.referrer_id))?.name||'',c.note]);
  const csv='\uFEFF'+[cols,...data].map(row=>row.map(csvCell).join(';')).join('\r\n');
  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
  const a=document.createElement('a');a.href=url;a.download='vpn-manager-clients-'+iso()+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);
