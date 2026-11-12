@@ -64,7 +64,7 @@ function renderAlerts(){
 }
 function render(){
  const q=$('search').value.trim().toLowerCase(),f=$('filter').value;
- const shown=clients.filter(c=>(!q||[c.name,c.phone,c.note].some(v=>String(v||'').toLowerCase().includes(q)))&&(f==='all'||(f==='lifetime'&&c.period==='lifetime')||(f==='active'&&(c.period==='lifetime'||remaining(c)>0))||(f==='expired'&&c.period!=='lifetime'&&remaining(c)<=0)||(f==='soon'&&c.period!=='lifetime'&&remaining(c)>0&&remaining(c)<=7)||(f==='referrals'&&!!c.referrer_id)||(f==='wg_on'&&wg.some(w=>String(w.id)===String(c.wg_client_id)&&w.enabled))||(f==='wg_off'&&!!c.wg_client_id&&!wg.some(w=>w.id===c.wg_client_id&&w.enabled))));
+ const shown=clients.filter(c=>(!q||[c.name,c.phone,c.note].some(v=>String(v||'').toLowerCase().includes(q)))&&(f==='all'||(f==='lifetime'&&c.period==='lifetime')||(f==='active'&&(c.period==='lifetime'||remaining(c)>0))||(f==='expired'&&c.period!=='lifetime'&&remaining(c)<=0)||(f==='soon'&&c.period!=='lifetime'&&remaining(c)>0&&remaining(c)<=7)||(f==='referrals'&&!!c.referrer_id)||(f==='wg_on'&&wg.some(w=>String(w.id)===String(c.wg_client_id)&&w.enabled))||(f==='wg_off'&&wgAvailable&&wg.some(w=>String(w.id)===String(c.wg_client_id)&&!w.enabled))));
  $('counts').textContent='Всего: '+clients.length+' · Активных: '+clients.filter(c=>c.period==='lifetime'||remaining(c)>0).length;
  renderAlerts();
  const wgIds=new Set(wg.map(w=>w.id));
@@ -185,7 +185,11 @@ async function handleClientAction(e){
  if(btn.dataset.act==='delete'){
   if(!confirm('Удалить клиента «'+c.name+'»?\\n\\nУдаление привязанного VPN-профиля требует отдельной проверки на сервере.'))return;
   btn.disabled=true;
-  try{await call('/api/clients/'+id+'/delete',{method:'POST'});await refresh();msg('Клиент «'+c.name+'» удалён')}
+  try{
+   await call('/api/clients/'+id+'/delete',{method:'POST'});
+   const history=await call('/api/clients/'+id+'/history').catch(()=>null);
+   await refresh();msg('Клиент «'+c.name+'» удалён'+(history?.history?' · Сохранено записей истории: '+history.history.length:''));
+  }
   catch(err){const message='Не удалось удалить клиента: '+err.message;msg(message,true);alert(message)}
   finally{btn.disabled=false}
   return;
