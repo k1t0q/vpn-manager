@@ -16,6 +16,13 @@ class SubscriptionTests(unittest.TestCase):
  def row(self,cid=60):
   with self.store.connect() as con:return dict(con.execute('SELECT * FROM clients WHERE id=?',(cid,)).fetchone())
  def meta(self):return json.loads((self.profiles/'60/metadata.json').read_text())
+ def test_moscow_midnight_renewal_and_date_deadline(self):
+  from awg_persistence import subscription_deadline
+  self.clock=datetime(2026,11,12,22,30,tzinfo=timezone.utc)
+  self.change('edit',{'period':'trial','end_date':'2026-11-12T22:00:00Z'})
+  result=self.change('extend',{'period':'1m'},'midnight-renew-0001')
+  self.assertEqual(result['end_date'],'2026-12-13')
+  self.assertEqual(subscription_deadline('1m','2026-12-13'),datetime(2026,12,12,21,tzinfo=timezone.utc))
  def test_calendar_renewal_and_lifetime_never_shortens(self):
   self.assertEqual(self.change('extend',{'period':'1m'})['end_date'],'2027-02-01')
   result=self.change('extend',{'period':'lifetime'},'renew-lifetime-0001');self.assertIsNone(result['end_date'])

@@ -1,7 +1,7 @@
 """Journaled subscriptions and expiry for explicitly permitted peers only."""
 from datetime import date,datetime,timedelta,timezone
 import hashlib,ipaddress,json,os,re,sqlite3,uuid
-from awg_persistence import PeerStore,StateError,atomic_write,peer_blocks,sync_dir,subscription_deadline
+from awg_persistence import PeerStore,StateError,atomic_write,peer_blocks,sync_dir,subscription_deadline,billing_date
 from awg_provision import deadline,MONTHS,BONUS
 
 PERIODS={*MONTHS,'14d','trial','lifetime','imported'}
@@ -90,10 +90,10 @@ class Subscriptions(PeerStore):
    if set(data)!={'period'} or data['period'] not in PERIODS-{'imported'}:raise StateError('Invalid renewal tariff')
    period=data['period']
    if row['period']=='lifetime':updates=dict(period='lifetime',end_date=None)
-   elif period=='trial':updates=dict(period=period,end_date=deadline(now.date(),period,now))
+   elif period=='trial':updates=dict(period=period,end_date=deadline(billing_date(now),period,now))
    else:
     old=subscription_deadline(row['period'],row['end_date'])
-    base=max(now.date(),old.date()) if old else now.date()
+    base=max(billing_date(now),billing_date(old)) if old else billing_date(now)
     updates=dict(period=period,end_date=deadline(base,period,now))
    return updates,'extended','Subscription renewed: '+updates['period'],None
   if kind=='edit':
@@ -138,7 +138,7 @@ class Subscriptions(PeerStore):
     old=subscription_deadline(row['period'],row['end_date'])
     base=max(now,old) if old else now
     end=base+timedelta(days=days)
-    updates={'end_date':end.date().isoformat() if len(row['end_date'] or '')==10 else end.isoformat()}
+    updates={'end_date':billing_date(end).isoformat() if len(row['end_date'] or '')==10 else end.isoformat()}
    return updates,'referral_bonus','Referral bonus +'+str(days)+' days from client #'+str(source['id']),None
   raise StateError('Unsupported subscription operation')
 

@@ -15,7 +15,7 @@ from pathlib import Path
 import re
 import shutil
 import uuid
-from awg_persistence import PeerStore, StateError, atomic_write, peer_blocks, sync_dir
+from awg_persistence import billing_date, PeerStore, StateError, atomic_write, peer_blocks, sync_dir
 
 MONTHS={'1m':1,'2m':2,'6m':6,'12m':12}
 BONUS={'1m':14,'6m':30,'12m':60}
@@ -136,7 +136,7 @@ class Provisioner(PeerStore):
                 block='[Peer]\nPublicKey = '+public+'\nPresharedKey = '+psk+'\nAllowedIPs = '+str(address)+'/32\n'
                 after=before.rstrip()+'\n\n'+block
                 start=date.fromisoformat(values['start_date'])
-                if values['period']=='trial':start=now.date()
+                if values['period']=='trial':start=billing_date(now)
                 end=deadline(start,values['period'],now)
                 meta=dict(client_id=cid,name=values['name'],address=str(address),
                           public_key=public,period=values['period'],end_date=end,enabled=True)
@@ -150,7 +150,7 @@ class Provisioner(PeerStore):
                     refmeta=json.loads(previous)
                     if str(refmeta['client_id'])!=str(referrer['id']):
                         raise StateError('Referrer metadata mismatch')
-                    referral_end=self._referral_end(referrer,bonus,now.date())
+                    referral_end=self._referral_end(referrer,bonus,billing_date(now))
                     refmeta['end_date']=referral_end
                     related.append(dict(cid=str(referrer['id']),before=previous,
                                         after=json.dumps(refmeta,ensure_ascii=False,indent=2)))

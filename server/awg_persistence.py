@@ -17,7 +17,14 @@ import sqlite3
 import subprocess
 import tempfile
 import uuid
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timezone, timedelta
+
+
+# Billing dates follow the panel owner's Moscow calendar; timestamp trials remain exact.
+BILLING_TIMEZONE = timezone(timedelta(hours=3))
+
+def billing_date(value):
+    return value.astimezone(BILLING_TIMEZONE).date()
 
 
 class StateError(RuntimeError):
@@ -29,8 +36,8 @@ def subscription_deadline(period, end):
         return None
     try:
         if len(end) == 10:
-            return datetime.combine(date.fromisoformat(end), time(), timezone.utc)
-        value = datetime.fromisoformat(end)
+            return datetime.combine(date.fromisoformat(end), time(), BILLING_TIMEZONE).astimezone(timezone.utc)
+        value = datetime.fromisoformat(end.replace('Z', '+00:00'))
         if value.tzinfo is None:
             raise ValueError()
         return value.astimezone(timezone.utc)
