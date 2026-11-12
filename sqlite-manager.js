@@ -367,7 +367,7 @@ $('editForm').onsubmit=async e=>{
   if(d[key]===old || (key==='end_date'&&d.period==='lifetime'&&!old))delete d[key];
  }
  if(!Object.keys(d).length){$('editDialog').close();return}
- if(selectedPeriod==='trial'&&d.end_date)d.end_date=new Date(d.end_date).toISOString();
+ if(selectedPeriod==='trial'&&d.end_date)d.end_date=new Date(d.end_date).toISOString().replace(/Z$/,'+00:00');
  try{await call('/api/clients/'+id,{method:'PATCH',body:JSON.stringify(d)});$('editDialog').close();await refresh();msg('Клиент обновлён')}
  catch(err){const message='Не удалось сохранить изменения: '+err.message;msg(message,true);alert(message)}
 };
