@@ -40,6 +40,8 @@ def main():
     venv=Path('/opt/vpn-manager-stage-venv')
     if not venv.exists():run('python3','-m','venv',str(venv))
     run(str(venv/'bin/pip'),'install','-r',str(HERE/'staging-requirements.txt'))
+    # Runtime contains no secrets; the unprivileged service needs read/traverse.
+    run('chmod','-R','a+rX',str(venv))
     try:pwd.getpwnam('vpn-deploy')
     except KeyError:pass
     else:raise SystemExit('Existing vpn-deploy account needs review; not modified')
@@ -68,6 +70,7 @@ def main():
     env.write_text('VPN_MANAGER_DB='+str(target)+'\nPANEL_ADMIN_CODE=\nPANEL_ORIGIN=https://185-23-239-142.sslip.io:8443\nPANEL_AWG_URL=http://127.0.0.1:1\nPANEL_AWG_TOKEN=\n')
     env.chmod(0o600)
     gate=Path('/usr/local/libexec/vpn-staging-gate.py');gate.parent.mkdir(parents=True,exist_ok=True)
+    gate.parent.chmod((gate.parent.stat().st_mode & 0o777) | 0o011)
     shutil.copyfile(HERE/'staging_gate.py',gate);gate.chmod(0o755)
     unit=Path('/etc/systemd/system/vpn-manager-stage.service')
     shutil.copyfile(HERE/'vpn-manager-stage.service',unit);unit.chmod(0o644)
