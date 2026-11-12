@@ -21,6 +21,8 @@ class Handler(BaseHTTPRequestHandler):
   token=self.headers.get('X-VPN-Token','')
   if not token or not hmac.compare_digest(token.encode(),self.server.token.encode()):return self.reply(401,dict(ok=False,error='Unauthorized'))
   try:
+   if (self.server.bridge.store.state/'pending.json').exists():
+    self.server.bridge.store.recover()
    data=None
    if self.command=='POST':
     length=int(self.headers.get('Content-Length','0'))
@@ -46,6 +48,9 @@ class Handler(BaseHTTPRequestHandler):
    body,status,kind=self.server.bridge.dispatch(self.command,self.path,data,self.headers.get('Idempotency-Key',''))
    return self.reply(status,body,kind)
   except StateError as error:
+   try:
+    if (self.server.bridge.store.state/'pending.json').exists():self.server.bridge.store.recover()
+   except Exception:return self.reply(503,dict(ok=False,error='Test operation pending safe recovery'))
    return self.reply(409,dict(ok=False,error=str(error)))
   except Exception:
    # Recovery is safe only for a durable journal belonging to this frozen engine.
