@@ -8,8 +8,8 @@ from datetime import datetime,timezone
 import hashlib,json,os,shutil,sqlite3,subprocess,sys,time
 from urllib.request import urlopen,Request
 
-COMMIT='7c8d603cca503641dc2ddad08f9d0c341bc6161f'
-FILES={"server/awg_persistence.py":"0b37f8e7addd4f5fd7162404b3ca98bb7e316b5d55b0ea217dcd54cfd1e7a3c3","server/awg_provision.py":"0f5caa2ef2180c75cf0e1f581b5a1bee27677a0dcc98c33ff48bacd112ca17fa","server/awg_delete.py":"bf1daaf74d0735c07327d8bfa9d4b949cedd0d28c252057f7804ac456b26a866","server/awg_test_bridge.py":"42d1a07d1605c76883781a82861b321d409337c4e523f445b3a6cb83cb030682","deploy/awg_readonly_bridge.py":"96b976a2f7d632c4517a97966d4cc860b2df0f42faba6732f221be9cd98c2f3f","deploy/awg_test_server.py":"49831b9b69d0e182075c14b326014070acbb009e9c3d78143a89ecc1d5116640","server/awg_subscriptions.py":"134dee55fe6d581d837b4b52c03f934102283455fde21ec7933b4061bbb505aa"}
+COMMIT='d36223a256200f21ddff87c65ad2fad8ab0d59cd'
+FILES={"server/awg_persistence.py":"0b37f8e7addd4f5fd7162404b3ca98bb7e316b5d55b0ea217dcd54cfd1e7a3c3","server/awg_provision.py":"0f5caa2ef2180c75cf0e1f581b5a1bee27677a0dcc98c33ff48bacd112ca17fa","server/awg_delete.py":"bf1daaf74d0735c07327d8bfa9d4b949cedd0d28c252057f7804ac456b26a866","server/awg_test_bridge.py":"42d1a07d1605c76883781a82861b321d409337c4e523f445b3a6cb83cb030682","deploy/awg_readonly_bridge.py":"96b976a2f7d632c4517a97966d4cc860b2df0f42faba6732f221be9cd98c2f3f","deploy/awg_test_server.py":"49831b9b69d0e182075c14b326014070acbb009e9c3d78143a89ecc1d5116640","server/awg_subscriptions.py":"132b84d3ca5a8660affa80461804d512b1a0bac26ec82d8ca19cbbedb1ea839e"}
 ROOT=Path('/var/lib/vpn-manager-awg-stage')
 
 
