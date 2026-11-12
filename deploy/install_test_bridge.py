@@ -8,8 +8,8 @@ from datetime import datetime,timezone
 import hashlib,json,os,shutil,sqlite3,subprocess,sys,time
 from urllib.request import urlopen,Request
 
-COMMIT='a1e3afa51c0cb0114cde943ba3952ebb6014f7fb'
-FILES={"server/awg_persistence.py":"4cea80527d5bc2bd5668c9e216e023197d85f34e556db4731e1c8cc330474c76","server/awg_provision.py":"0f5caa2ef2180c75cf0e1f581b5a1bee27677a0dcc98c33ff48bacd112ca17fa","server/awg_delete.py":"bf1daaf74d0735c07327d8bfa9d4b949cedd0d28c252057f7804ac456b26a866","server/awg_test_bridge.py":"0e6bdf2472815c623b12e8d6fb16a59a7d61308ac7c338161f68a922ff2eb5c9","deploy/awg_readonly_bridge.py":"96b976a2f7d632c4517a97966d4cc860b2df0f42faba6732f221be9cd98c2f3f","deploy/awg_test_server.py":"0b76fc546abec5ee0d47e3d860462f5d08762f7309da7eb43e13216fd1429707"}
+COMMIT='7c8d603cca503641dc2ddad08f9d0c341bc6161f'
+FILES={"server/awg_persistence.py":"0b37f8e7addd4f5fd7162404b3ca98bb7e316b5d55b0ea217dcd54cfd1e7a3c3","server/awg_provision.py":"0f5caa2ef2180c75cf0e1f581b5a1bee27677a0dcc98c33ff48bacd112ca17fa","server/awg_delete.py":"bf1daaf74d0735c07327d8bfa9d4b949cedd0d28c252057f7804ac456b26a866","server/awg_test_bridge.py":"42d1a07d1605c76883781a82861b321d409337c4e523f445b3a6cb83cb030682","deploy/awg_readonly_bridge.py":"96b976a2f7d632c4517a97966d4cc860b2df0f42faba6732f221be9cd98c2f3f","deploy/awg_test_server.py":"49831b9b69d0e182075c14b326014070acbb009e9c3d78143a89ecc1d5116640","server/awg_subscriptions.py":"134dee55fe6d581d837b4b52c03f934102283455fde21ec7933b4061bbb505aa"}
 ROOT=Path('/var/lib/vpn-manager-awg-stage')
 
 
@@ -41,7 +41,7 @@ def main():
   data=urlopen('https://raw.githubusercontent.com/k1t0q/vpn-manager/'+COMMIT+'/'+path,timeout=30).read()
   if hashlib.sha256(data).hexdigest()!=digest:raise SystemExit('Source verification failed; no server settings changed')
   materials[path]=data
- if len(materials)!=6:raise SystemExit('Incomplete source manifest')
+ if len(materials)!=7:raise SystemExit('Incomplete source manifest')
  code_dir=Path('/usr/local/libexec/vpn-manager-awg-stage')
  code_dir.mkdir(mode=0o700)
  for path,data in materials.items():write(code_dir/Path(path).name,data)
