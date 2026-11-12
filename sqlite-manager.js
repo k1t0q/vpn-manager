@@ -68,7 +68,6 @@ function render(){
  const hasWg=!!c.wg_client_id;
  return '<div class="m-actions client-actions">'
  +'<button data-act="extend" data-id="'+c.id+'" class="secondary">Продлить</button>'
- +'<button data-act="history" data-id="'+c.id+'" class="secondary">История</button>'
  +'<button data-act="edit" data-id="'+c.id+'" class="secondary">Изменить</button>'
  +(hasWg?'<button data-act="wg-qr" data-id="'+c.id+'" class="secondary">QR</button><button data-act="wg-config" data-id="'+c.id+'" class="secondary">Конфиг</button>':'<button data-act="wg-create" data-id="'+c.id+'">Создать VPN</button><span></span>')
  +(hasWg?'<button data-act="wg-toggle" data-id="'+c.id+'" class="'+(peer?.enabled?'warning':'success-toggle')+'">'+(peer?.enabled?'Отключить':'Включить')+'</button>':'<span></span>')
@@ -426,3 +425,4 @@ if(mobileActions){
  syncMobileActions();
 }
 })();
+
