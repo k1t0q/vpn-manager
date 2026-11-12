@@ -31,16 +31,8 @@ def main():
     key=args.public_key.read_text().strip()
     if not key.startswith('ssh-rsa ') or len(key.split()) not in (2,3) or '\n' in key:
         raise SystemExit('Invalid deployment public key')
-    # Never read or display any login password/API token. Reuse only panel login code.
-    pid=int(run('systemctl','show','vpn-manager-panel-test.service','-p','MainPID','--value'))
-    if pid<=1:raise SystemExit('Existing panel service must be active')
-    environ={}
-    for item in Path('/proc/'+str(pid)+'/environ').read_bytes().split(b'\0'):
-        if b'=' in item:
-            k,v=item.split(b'=',1);environ[k.decode()]=v.decode()
-    code=environ.get('PANEL_ADMIN_CODE','')
-    if not code or '\n' in code or '\r' in code or '\0' in code:
-        raise SystemExit('Panel login code unavailable; no changes made')
+    # Do not inspect process environments or copy any existing credentials.
+    # Login remains disabled until the owner explicitly sets a preview login code.
     # Avoid silently replacing any pre-existing preview setup.
     if Path('/etc/vpn-manager-stage.env').exists():
         raise SystemExit('Preview already configured; inspect before replacing')
@@ -72,10 +64,8 @@ def main():
             destination.execute('DELETE FROM panel_sessions')
         if destination.execute('PRAGMA integrity_check').fetchone()[0]!='ok':raise SystemExit('Copy integrity failure')
     source.close();target.chmod(0o600);os.chown(target,account.pw_uid,account.pw_gid)
-    # systemd EnvironmentFile supports double-quoted escaped values.
-    quoted=code.replace('\\','\\\\').replace('"','\\"')
     env=Path('/etc/vpn-manager-stage.env')
-    env.write_text('VPN_MANAGER_DB='+str(target)+'\nPANEL_ADMIN_CODE="'+quoted+'"\nPANEL_ORIGIN=https://185-23-239-142.sslip.io:8443\nPANEL_AWG_URL=http://127.0.0.1:1\nPANEL_AWG_TOKEN=\n')
+    env.write_text('VPN_MANAGER_DB='+str(target)+'\nPANEL_ADMIN_CODE=\nPANEL_ORIGIN=https://185-23-239-142.sslip.io:8443\nPANEL_AWG_URL=http://127.0.0.1:1\nPANEL_AWG_TOKEN=\n')
     env.chmod(0o600)
     gate=Path('/usr/local/libexec/vpn-staging-gate.py');gate.parent.mkdir(parents=True,exist_ok=True)
     shutil.copyfile(HERE/'staging_gate.py',gate);gate.chmod(0o755)

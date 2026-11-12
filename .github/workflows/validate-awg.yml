@@ -44,7 +44,7 @@ jobs:
       - name: Deploy isolated staging release
         env:
           DEPLOY_KEY: ${{ secrets.STAGING_SSH_KEY }}
-          KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+          HOST_FINGERPRINT: ${{ secrets.STAGING_HOST_FINGERPRINT }}
           RELEASE_SHA: ${{ github.sha }}
         run: bash deploy/actions-ssh.sh
   rollback_staging:
@@ -61,6 +61,7 @@ jobs:
         env:
           DEPLOY_ACTION: rollback
           DEPLOY_KEY: ${{ secrets.STAGING_SSH_KEY }}
-          KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+          HOST_FINGERPRINT: ${{ secrets.STAGING_HOST_FINGERPRINT }}
           RELEASE_SHA: ${{ inputs.rollback_sha }}
         run: bash deploy/actions-ssh.sh
+
