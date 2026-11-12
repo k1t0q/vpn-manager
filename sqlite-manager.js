@@ -38,9 +38,17 @@ function wgDisplay(c,mobile=false){
 }
 
 async function call(path,opts={}){
- const r=await fetch(API+path,{...opts,headers:{'Content-Type':'application/json',...(token?{'Authorization':'Bearer '+token}:{}),...(opts.headers||{})}});
+ const mutation=opts.method==='POST'&&(path==='/api/clients/provision'||path.startsWith('/api/wg/client/')||/^\/api\/clients\/\d+\/delete$/.test(path));
+ let pendingId='',requestKey='';
+ if(mutation){
+  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([path,opts.body||''])));
+  pendingId='vpn_manager_pending_'+Array.from(new Uint8Array(digest),v=>v.toString(16).padStart(2,'0')).join('');
+  requestKey=sessionStorage.getItem(pendingId)||crypto.randomUUID();sessionStorage.setItem(pendingId,requestKey);
+ }
+ const r=await fetch(API+path,{...opts,headers:{'Content-Type':'application/json',...(token?{'Authorization':'Bearer '+token}:{}),...(requestKey?{'Idempotency-Key':requestKey}:{}),...(opts.headers||{})}});
  let d;try{d=await r.json()}catch{throw Error('Некорректный ответ сервера: '+r.status)}
  if(!r.ok||d.ok===false){if(r.status===401){token='';sessionStorage.removeItem(TOKEN_KEY);$('workspace').classList.add('m-hide');$('loginPane').classList.remove('m-hide')}throw Error(d.error||'HTTP '+r.status)}
+ if(pendingId)sessionStorage.removeItem(pendingId);
  return d;
 }
 const dataList=d=>{const x=d.clients??d.data??d; if(!Array.isArray(x))throw Error('Неизвестный формат списка клиентов');return x};
@@ -150,25 +158,16 @@ function nextPeerName(){
 $('create').onsubmit=async e=>{
  e.preventDefault();
  const form=new FormData(e.currentTarget),p=Object.fromEntries(form);
- p.user_id='vpn-manager-admin';if(!p.referrer_id)delete p.referrer_id;
- const peerName=nextPeerName();
- if(!confirm('Создать клиента «'+p.name+'» и VPN-профиль «'+peerName+'»?'))return;
+ if(!p.referrer_id)delete p.referrer_id;else p.referrer_id=Number(p.referrer_id);
+ if(!p.name.startsWith('STAGING TEST '))p.name='STAGING TEST '+p.name;
+ if(!confirm('Создать отдельный тестовый профиль «'+p.name+'»?'))return;
  const submit=e.currentTarget.querySelector('[type="submit"]');if(submit)submit.disabled=true;
  try{
-  const d=await call('/api/clients/create',{method:'POST',body:JSON.stringify(p)});
+  const d=await call('/api/clients/provision',{method:'POST',body:JSON.stringify(p)});
   const id=d.id||d.client?.id;
-  if(!id)throw Error('Запись клиента создана, но сервер не вернул ID. Проверьте список перед повтором.');
-  let wid;
-  try{
-   const result=await call('/api/wg/client',{method:'POST',body:JSON.stringify({name:peerName})});
-   const peer=result.client||result;
-   wid=result.id||result.client_id||result.wg_client_id||peer.id;
-   if(!wid)throw Error('AmneziaWG не вернул ID созданного профиля');
-  }catch(err){await refresh();throw Error('Клиент «'+p.name+'» создан (ID '+id+'), но VPN-профиль не создан или не подтверждён: '+err.message+'. Проверьте AmneziaWG, не создавайте клиента повторно.')}
-  try{await call('/api/clients/'+id+'/wireguard',{method:'POST',body:JSON.stringify({wg_client_id:wid})})}
-  catch(err){await refresh();throw Error('Клиент и VPN-профиль «'+peerName+'» созданы, но привязка не удалась: '+err.message+'. Не создавайте их повторно.')}
+  if(!id)throw Error('Сервер не подтвердил ID. Повторите тот же запрос без изменения полей.');
   $('create').reset();$('create').elements.start_date.value=iso();
-  await refresh();msg('Создан клиент «'+p.name+'» — '+peerName);
+  await refresh();msg('Создан клиент и отдельный профиль «'+p.name+'»');
  }catch(err){msg(err.message,true);alert(err.message)}
  finally{if(submit)submit.disabled=false}
 };

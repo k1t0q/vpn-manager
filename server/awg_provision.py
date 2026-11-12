@@ -66,6 +66,11 @@ class Provisioner(PeerStore):
                     if old['payload_hash']!=payload:raise StateError('Idempotency key reused')
                     return json.loads(old['result'])
                 con.execute('BEGIN IMMEDIATE')
+                if getattr(self,'stage_limit',None) is not None:
+                    deleted=con.execute("SELECT 1 FROM sqlite_master WHERE name='awg_deleted_clients'").fetchone()
+                    rows=con.execute('SELECT id FROM clients'+(' WHERE id NOT IN (SELECT client_id FROM awg_deleted_clients)' if deleted else '')).fetchall()
+                    if sum(str(row[0]) not in self.protected for row in rows)>=self.stage_limit:
+                        raise StateError('Staging test client limit reached')
                 owners=con.execute('SELECT DISTINCT user_id FROM clients').fetchall()
                 if len(owners)!=1:raise StateError('A single existing database owner is required')
                 owner=owners[0][0]

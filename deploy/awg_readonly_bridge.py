@@ -27,7 +27,8 @@ def runtime():
 def collect(db=DB, profiles=PROFILES, read_runtime=runtime):
     peers, handshakes, transfers = read_runtime()
     with sqlite3.connect(db.as_uri()+'?mode=ro', uri=True, timeout=5) as con:
-        rows = con.execute('SELECT id,wg_client_id,name FROM clients ORDER BY id').fetchall()
+        deleted=con.execute("SELECT 1 FROM sqlite_master WHERE name='awg_deleted_clients'").fetchone()
+        rows = con.execute('SELECT id,wg_client_id,name FROM clients'+(' WHERE id NOT IN (SELECT client_id FROM awg_deleted_clients)' if deleted else '')+' ORDER BY id').fetchall()
     result = []
     ids = set()
     public_keys = set()

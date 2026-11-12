@@ -36,6 +36,8 @@ class PanelTests(unittest.TestCase):
   with sqlite3.connect(self.db) as c:self.assertEqual(c.execute('SELECT user_id FROM clients WHERE id=?',(new,)).fetchone()[0],'owner')
   self.assertEqual(self.c.post('/api/clients/1/delete',headers=self.h).status_code,409)
   self.assertEqual(self.c.post('/api/clients/'+str(new)+'/delete',headers=self.h).status_code,200)
+  self.assertNotIn(new,[r['id'] for r in self.c.get('/api/clients',headers=self.h).json['clients']])
+  self.assertEqual(len(self.c.get('/api/clients/'+str(new)+'/history',headers=self.h).json['history']),2)
   r=self.c.post('/api/referrals/award-safe',headers=self.h,json={'client_id':2});self.assertEqual(r.status_code,200)
   self.assertEqual(self.c.post('/api/referrals/award-safe',headers=self.h,json={'client_id':2}).status_code,409)
  def test_bridge_and_route_uniqueness(self):
@@ -44,5 +46,16 @@ class PanelTests(unittest.TestCase):
    self.assertEqual(upstream.call_args.kwargs['headers'],{'X-VPN-Token':'test-upstream'})
   routes=[(r.rule,m) for r in self.app.url_map.iter_rules() for m in r.methods if m not in ('HEAD','OPTIONS')];self.assertEqual(len(routes),len(set(routes)))
   self.assertEqual(end_date(date(2026,1,31),'1m'),'2026-02-28')
+ def test_managed_creation_is_atomic_and_forwards_stable_key(self):
+  self.assertEqual(self.c.post('/api/clients/provision',headers=self.h,json={}).status_code,503)
+  self.app.config['MANAGED_AWG']=True
+  self.assertEqual(self.c.post('/api/clients/create',headers=self.h,json={}).status_code,409)
+  self.assertEqual(self.c.post('/api/clients/provision',headers=self.h,json={}).status_code,400)
+  with patch('staging_api.requests.post',return_value=Mock(status_code=201,content=b'{"ok":true,"id":"60"}')) as upstream:
+   r=self.c.post('/api/clients/provision',headers={**self.h,'Idempotency-Key':'managed-create-0001'},json={'name':'STAGING TEST Mock'})
+   self.assertEqual(r.status_code,201)
+   self.assertEqual(upstream.call_args.kwargs['headers']['Idempotency-Key'],'managed-create-0001')
+  with sqlite3.connect(self.db) as con:self.assertEqual(con.execute('SELECT count(*) FROM clients').fetchone()[0],59)
 
 if __name__=='__main__':unittest.main()
+

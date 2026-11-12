@@ -10,16 +10,18 @@ def end_date(base,period):
  if not months:raise ValueError()
  year,month=divmod(base.year*12+base.month-1+months,12);month+=1
  return date(year,month,min(base.day,monthrange(year,month)[1])).isoformat()
-def register(app,authorized,db_connect):
+def register(app,authorized,db_connect,managed=None):
  def history(con,row,event,description):con.execute('INSERT INTO client_history(user_id,client_id,event_type,description) VALUES(?,?,?,?)',(row['user_id'],row['id'],event,description))
  @app.get('/api/clients/<int:client_id>/history')
  @authorized
  def client_history(client_id):
+  if app.config.get('MANAGED_AWG') and managed:return managed('/api/managed/clients/'+str(client_id)+'/history',method='GET')
   with db_connect() as con:rows=con.execute('SELECT event_type,description,created_at FROM client_history WHERE client_id=? ORDER BY created_at DESC,id DESC',(client_id,)).fetchall()
   return jsonify(ok=True,history=[dict(r) for r in rows])
  @app.patch('/api/clients/<int:client_id>')
  @authorized
  def edit(client_id):
+  if app.config.get('MANAGED_AWG'):return jsonify(ok=False,error='Managed editing is not installed'),503
   d=request.get_json(silent=True)
   if not isinstance(d,dict) or not d or set(d)-{'name','phone','note','start_date','end_date','period','referrer_id'}:return jsonify(ok=False,error='Invalid fields'),400
   try:
@@ -40,6 +42,7 @@ def register(app,authorized,db_connect):
  @app.post('/api/clients/<int:client_id>/extend')
  @authorized
  def extend(client_id):
+  if app.config.get('MANAGED_AWG'):return jsonify(ok=False,error='Managed renewal is not installed'),503
   d=request.get_json(silent=True);period=d.get('period') if isinstance(d,dict) else None
   if not isinstance(period,str) or period not in PERIODS or period=='imported':return jsonify(ok=False,error='Invalid period'),400
   with db_connect() as con:
@@ -52,6 +55,7 @@ def register(app,authorized,db_connect):
  @app.post('/api/clients/create')
  @authorized
  def create():
+  if app.config.get('MANAGED_AWG'):return jsonify(ok=False,error='Use atomic client provisioning'),409
   d=request.get_json(silent=True)
   try:
    name=d['name'].strip();start=date.fromisoformat(d['start_date']);period=d['period'];end=end_date(start,period);ref=int(d['referrer_id']) if d.get('referrer_id') else None
@@ -66,9 +70,13 @@ def register(app,authorized,db_connect):
  @app.post('/api/clients/<int:client_id>/delete')
  @authorized
  def delete(client_id):
+  if app.config.get('MANAGED_AWG') and managed:return managed('/api/wg/client/'+str(client_id)+'/delete')
   with db_connect() as con:
-   con.execute('BEGIN IMMEDIATE');row=con.execute('SELECT id,wg_client_id FROM clients WHERE id=?',(client_id,)).fetchone()
+   con.execute('BEGIN IMMEDIATE');row=con.execute('SELECT id,user_id,wg_client_id FROM clients WHERE id=?',(client_id,)).fetchone()
    if row is None:return jsonify(ok=False,error='Client not found'),404
    if row['wg_client_id']:return jsonify(ok=False,error='Linked AWG profile must be reviewed before deletion; client preserved'),409
-   con.execute('UPDATE clients SET referrer_id=NULL WHERE referrer_id=?',(client_id,));con.execute('DELETE FROM client_history WHERE client_id=?',(client_id,));con.execute('DELETE FROM clients WHERE id=?',(client_id,))
+   con.execute('CREATE TABLE IF NOT EXISTS awg_deleted_clients(client_id INTEGER PRIMARY KEY,deleted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)')
+   con.execute('INSERT OR IGNORE INTO awg_deleted_clients(client_id) VALUES(?)',(client_id,))
+   history(con,row,'deleted','Client archived; history preserved')
   return jsonify(ok=True,id=client_id,wireguard_unchanged=True)
+
