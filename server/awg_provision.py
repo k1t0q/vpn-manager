@@ -72,8 +72,14 @@ class Provisioner(PeerStore):
                     if sum(str(row[0]) not in self.protected for row in rows)>=self.stage_limit:
                         raise StateError('Staging test client limit reached')
                 owners=con.execute('SELECT DISTINCT user_id FROM clients').fetchall()
-                if len(owners)!=1:raise StateError('A single existing database owner is required')
-                owner=owners[0][0]
+                configured_owner=getattr(self,'owner_id',None)
+                if configured_owner is not None:
+                    if configured_owner not in {row[0] for row in owners}:
+                        raise StateError('Configured test owner is not present in the database')
+                    owner=configured_owner
+                else:
+                    if len(owners)!=1:raise StateError('A single existing database owner is required')
+                    owner=owners[0][0]
                 referrer=None
                 if values['referrer_id'] is not None:
                     referrer=con.execute('SELECT * FROM clients WHERE id=? AND user_id=?',
@@ -81,7 +87,12 @@ class Provisioner(PeerStore):
                     if referrer is None:raise StateError('Referrer not found')
                 before=self.config.read_text()
                 header,blocks=peer_blocks(before)
-                server=configparser.ConfigParser(interpolation=None)
+                # awg-quick permits repeated PostUp/PostDown lines. Preserve
+                # those verbatim while rejecting ambiguous address/save flags.
+                for field in ('Address','SaveConfig'):
+                    if len(re.findall(r'(?m)^[ \t]*'+field+r'[ \t]*=',header))>1:
+                        raise StateError('Ambiguous server interface fields')
+                server=configparser.ConfigParser(interpolation=None,strict=False)
                 server.optionxform=str
                 # The full server config has duplicate Peer sections; parse Interface only.
                 server.read_string(header)

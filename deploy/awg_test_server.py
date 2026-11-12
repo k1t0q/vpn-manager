@@ -66,6 +66,14 @@ def main():
  store=Provisioner(ROOT/'clients.db',Path('/etc/amnezia/amneziawg/awg-test.conf'),
                    ROOT/'profiles',ROOT/'operations',protected_ids=baseline['protected_ids'])
  store.stage_limit=3
+ # Owner choice is server-side and restricted to immutable protected records.
+ # Legacy imports may contain several owners; never rewrite those rows or
+ # accept a caller-provided user_id to resolve that difference.
+ with store.connect() as con:
+  owners=con.execute('SELECT id,user_id FROM clients WHERE user_id IS NOT NULL ORDER BY id').fetchall()
+ owner=next((row['user_id'] for row in owners if str(row['id']) in store.protected and str(row['user_id']).strip()),None)
+ if owner is None:raise SystemExit('No protected staging owner available')
+ store.owner_id=owner
  store.recover(offline=AWGRuntime().is_down())
  bridge=TestBridge(store,ROOT/'template.conf',baseline)
  server=HTTPServer(('127.0.0.1',5054),Handler)

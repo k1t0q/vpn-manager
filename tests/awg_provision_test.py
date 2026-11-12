@@ -97,6 +97,28 @@ class ProvisionTests(unittest.TestCase):
  def test_live_only_address_is_reserved(self):
   self.runtime.extra=[61]
   self.assertEqual(self.create()['address'],'10.99.0.62');self.assert_originals()
+ def test_legacy_mixed_owners_require_trusted_server_selection(self):
+  with sqlite3.connect(self.db) as con:con.execute("UPDATE clients SET user_id='legacy-owner' WHERE id=60")
+  with self.assertRaises(StateError):self.create()
+  self.assertEqual(self.runtime.generated,0)
+  self.store.owner_id='owner'
+  result=self.create()
+  with sqlite3.connect(self.db) as con:
+   self.assertEqual(con.execute('SELECT user_id FROM clients WHERE id=?',(result['client_id'],)).fetchone()[0],'owner')
+   self.assertEqual(con.execute('SELECT user_id FROM clients WHERE id=60').fetchone()[0],'legacy-owner')
+  self.assert_originals()
+ def test_caller_cannot_choose_owner(self):
+  with self.assertRaises(StateError):self.create(data={**self.data,'user_id':'owner'})
+  self.store.owner_id='unknown-owner'
+  with self.assertRaises(StateError):self.create()
+  self.assertEqual(self.runtime.generated,0)
+ def test_repeated_quick_hooks_are_preserved_but_duplicate_address_is_rejected(self):
+  hooks='PostUp = first-hook\nPostUp = second-hook\n'
+  self.config.write_text(self.original.replace('[Interface]\n','[Interface]\n'+hooks))
+  self.create()
+  self.assertIn(hooks,self.config.read_text())
+  self.config.write_text(self.config.read_text().replace('[Interface]\n','[Interface]\nAddress = 10.99.0.253/24\n'))
+  with self.assertRaises(StateError):self.create('duplicate-address-01')
  def test_trial_is_exactly_24_hours_and_lifetime_has_no_deadline(self):
   result=self.create(data={**self.data,'period':'trial'})
   with sqlite3.connect(self.db) as con:
