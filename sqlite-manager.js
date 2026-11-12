@@ -1,9 +1,9 @@
 (()=>{
 'use strict';
-const API='https://vpn-staging.80-90-179-65.sslip.io';
+const API=window.VPN_MANAGER_CONFIG.API_BASE;
 const $=id=>document.getElementById(id);
 const TOKEN_KEY='vpn_manager_sqlite_session_v1';
-let token=localStorage.getItem(TOKEN_KEY)||'',clients=[],wg=[];
+let token=sessionStorage.getItem(TOKEN_KEY)||'',clients=[],wg=[];
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const msg=(t,bad=false)=>{$('status').textContent=t;$('status').className=bad?'m-error':'m-ok'};
 const iso=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')};
@@ -39,7 +39,7 @@ function wgDisplay(c,mobile=false){
 async function call(path,opts={}){
  const r=await fetch(API+path,{...opts,headers:{'Content-Type':'application/json',...(token?{'Authorization':'Bearer '+token}:{}),...(opts.headers||{})}});
  let d;try{d=await r.json()}catch{throw Error('Некорректный ответ сервера: '+r.status)}
- if(!r.ok||d.ok===false){if(r.status===401){token='';localStorage.removeItem(TOKEN_KEY);$('workspace').classList.add('m-hide');$('loginPane').classList.remove('m-hide')}throw Error(d.error||'HTTP '+r.status)}
+ if(!r.ok||d.ok===false){if(r.status===401){token='';sessionStorage.removeItem(TOKEN_KEY);$('workspace').classList.add('m-hide');$('loginPane').classList.remove('m-hide')}throw Error(d.error||'HTTP '+r.status)}
  return d;
 }
 const dataList=d=>{const x=d.clients??d.data??d; if(!Array.isArray(x))throw Error('Неизвестный формат списка клиентов');return x};
@@ -68,6 +68,7 @@ function render(){
  const hasWg=!!c.wg_client_id;
  return '<div class="m-actions client-actions">'
  +'<button data-act="extend" data-id="'+c.id+'" class="secondary">Продлить</button>'
+ +'<button data-act="history" data-id="'+c.id+'" class="secondary">История</button>'
  +'<button data-act="edit" data-id="'+c.id+'" class="secondary">Изменить</button>'
  +(hasWg?'<button data-act="wg-qr" data-id="'+c.id+'" class="secondary">QR</button><button data-act="wg-config" data-id="'+c.id+'" class="secondary">Конфиг</button>':'<button data-act="wg-create" data-id="'+c.id+'">Создать VPN</button><span></span>')
  +(hasWg?'<button data-act="wg-toggle" data-id="'+c.id+'" class="'+(peer?.enabled?'warning':'success-toggle')+'">'+(peer?.enabled?'Отключить':'Включить')+'</button>':'<span></span>')
@@ -95,15 +96,15 @@ async function refresh(){
   return bd-ad || Number(b.id||0)-Number(a.id||0);
  });
  wg=b.clients||[];render();
- msg(b.error?'Клиенты загружены, WireGuard недоступен: '+b.error:'Данные обновлены',!!b.error);
+ msg(b.error?'Клиенты загружены, AmneziaWG недоступен: '+b.error:'Данные обновлены',!!b.error);
 }
 $('toggleCode').onclick=()=>{const field=$('code'),visible=field.type==='password';field.type=visible?'text':'password';$('toggleCode').textContent=visible?'Скрыть':'Показать';$('toggleCode').setAttribute('aria-label',visible?'Скрыть код':'Показать код')};
 $('login').onsubmit=async e=>{
  e.preventDefault();try{
  const d=await call('/auth/login',{method:'POST',body:JSON.stringify({code:$('code').value})});
- token=d.access_token||d.token||'';if(!token)throw Error('Сервер не вернул токен');localStorage.setItem(TOKEN_KEY,token);
+ token=d.access_token||d.token||'';if(!token)throw Error('Сервер не вернул токен');sessionStorage.setItem(TOKEN_KEY,token);
  $('code').value='';await refresh();$('loginPane').classList.add('m-hide');$('workspace').classList.remove('m-hide');
- }catch(e){token='';localStorage.removeItem(TOKEN_KEY);msg('Ошибка входа: '+e.message,true)}
+ }catch(e){token='';sessionStorage.removeItem(TOKEN_KEY);msg('Ошибка входа: '+e.message,true)}
 };
 function peerLabel(c){
  const raw=wg.find(w=>String(w.id)===String(c.wg_client_id))?.name||'';
@@ -162,8 +163,8 @@ $('create').onsubmit=async e=>{
    const result=await call('/api/wg/client',{method:'POST',body:JSON.stringify({name:peerName})});
    const peer=result.client||result;
    wid=result.id||result.client_id||result.wg_client_id||peer.id;
-   if(!wid)throw Error('wg-easy не вернул ID созданного профиля');
-  }catch(err){await refresh();throw Error('Клиент «'+p.name+'» создан (ID '+id+'), но VPN-профиль не создан или не подтверждён: '+err.message+'. Проверьте wg-easy, не создавайте клиента повторно.')}
+   if(!wid)throw Error('AmneziaWG не вернул ID созданного профиля');
+  }catch(err){await refresh();throw Error('Клиент «'+p.name+'» создан (ID '+id+'), но VPN-профиль не создан или не подтверждён: '+err.message+'. Проверьте AmneziaWG, не создавайте клиента повторно.')}
   try{await call('/api/clients/'+id+'/wireguard',{method:'POST',body:JSON.stringify({wg_client_id:wid})})}
   catch(err){await refresh();throw Error('Клиент и VPN-профиль «'+peerName+'» созданы, но привязка не удалась: '+err.message+'. Не создавайте их повторно.')}
   $('create').reset();$('create').elements.start_date.value=iso();
@@ -175,9 +176,9 @@ async function handleClientAction(e){
  const btn=e.target.closest('button[data-act]');if(!btn)return;
  const id=Number(btn.dataset.id),c=clients.find(x=>Number(x.id)===id);if(!c)return;
  if(btn.dataset.act==='delete'){
-  if(!confirm('Удалить клиента «'+c.name+'»?\\n\\nБудут удалены запись из VPN MANAGER и привязанный профиль WireGuard.'))return;
+  if(!confirm('Удалить клиента «'+c.name+'»?\\n\\nУдаление привязанного VPN-профиля требует отдельной проверки на сервере.'))return;
   btn.disabled=true;
-  try{await call('/api/clients/'+id+'/delete',{method:'POST'});await refresh();msg('Клиент «'+c.name+'» удалён вместе с WireGuard-профилем')}
+  try{await call('/api/clients/'+id+'/delete',{method:'POST'});await refresh();msg('Клиент «'+c.name+'» удалён')}
   catch(err){const message='Не удалось удалить клиента: '+err.message;msg(message,true);alert(message)}
   finally{btn.disabled=false}
   return;
@@ -203,10 +204,11 @@ async function handleClientAction(e){
  requestAnimationFrame(()=>{if(document.activeElement?.blur)document.activeElement.blur()});
  }else if(btn.dataset.act==='wg-toggle'){
  const peer=wg.find(w=>String(w.id)===String(c.wg_client_id));
- const action=peer?.enabled?'disable':'enable';
- if(!confirm((action==='disable'?'Отключить':'Включить')+' WireGuard для '+c.name+'?'))return;
+ if(!peer)throw Error('Профиль не подтверждён сервером. Обновите список.');
+ const action=peer.enabled?'disable':'enable';
+ if(!confirm((action==='disable'?'Отключить':'Включить')+' AmneziaWG для '+c.name+'?'))return;
  await call('/api/wg/client/'+encodeURIComponent(c.wg_client_id)+'/'+action,{method:'POST'});
- await refresh();msg('WireGuard '+(action==='disable'?'отключён':'включён'));
+ await refresh();msg('AmneziaWG '+(action==='disable'?'отключён':'включён'));
  }else if(btn.dataset.act==='wg-qr'||btn.dataset.act==='wg-config'){
  const isQr=btn.dataset.act==='wg-qr';
  const response=await fetch(API+'/api/wg/client/'+encodeURIComponent(c.wg_client_id)+'/'+(isQr?'qr':'config'),{headers:{Authorization:'Bearer '+token}});
@@ -216,14 +218,14 @@ async function handleClientAction(e){
   const url=URL.createObjectURL(blob);
   const qr=$('qrImage');qr.src=url;
   $('qrTitle').textContent=peerLabel(c).replace(/^CEASER\s+BOT/i,'CAESAR BOT');
-  $('qrDialog').dataset.peerName=peerLabel(c)||'WireGuard';
+  $('qrDialog').dataset.peerName=peerLabel(c)||'AmneziaWG';
   $('qrDialog').dataset.tariff=tariff[c.period]||c.period||'—';
   $('qrDialog').dataset.expires=c.period==='lifetime'?'Бессрочно ∞':formatDate(c.end_date);
   $('qrDialog').showModal();
   $('qrDialog').dataset.objectUrl=url;
   return;
  }
- const peerName=peerLabel(c)||'WireGuard';
+ const peerName=peerLabel(c)||'AmneziaWG';
  const fileName=peerName.replace(/[\\/:*?"<>|\x00-\x1f]/g,'_').trim()+'.conf';
  const file=new File([blob],fileName,{type:'application/octet-stream'});
  if(typeof navigator.share==='function'&&typeof navigator.canShare==='function'&&navigator.canShare({files:[file]})){
@@ -240,14 +242,14 @@ async function handleClientAction(e){
   setTimeout(()=>URL.revokeObjectURL(url),60000);
  }
  }else if(btn.dataset.act==='wg-create'){
- if(!confirm('Создать WireGuard-профиль для '+c.name+' и привязать к SQLite?'))return;
+ if(!confirm('Создать AmneziaWG-профиль для '+c.name+' и привязать к SQLite?'))return;
  const result=await call('/api/wg/client',{method:'POST',body:JSON.stringify({name:nextPeerName()})});
  const peer=result.client||result;
  const wid=result.id||result.client_id||result.wg_client_id||peer.id;
- if(!wid)throw Error('WireGuard создал профиль, но не вернул ID. Проверьте wg-easy перед повтором.');
+ if(!wid)throw Error('AmneziaWG создал профиль, но не вернул ID. Проверьте AmneziaWG перед повтором.');
  try{await call('/api/clients/'+id+'/wireguard',{method:'POST',body:JSON.stringify({wg_client_id:wid})})}
- catch(err){throw Error('WireGuard профиль '+wid+' создан, но привязка не удалась: '+err.message+'. НЕ повторяйте создание.')}
- await refresh();msg('WireGuard создан и привязан к '+c.name);
+ catch(err){throw Error('AmneziaWG профиль '+wid+' создан, но привязка не удалась: '+err.message+'. НЕ повторяйте создание.')}
+ await refresh();msg('AmneziaWG создан и привязан к '+c.name);
  }else if(btn.dataset.act==='history'){
  const d=await call('/api/clients/'+id+'/history');
  $('history').innerHTML=(d.history||[]).map(h=>'<p><b>'+esc(h.event_type)+'</b> — '+esc(h.description)+'<small> '+esc(h.created_at)+'</small></p>').join('')||'<p>Записей пока нет</p>';
@@ -270,7 +272,7 @@ $('shareQr').onclick=async()=>{
  if(!img.complete||!img.naturalWidth){msg('QR-код ещё загружается',true);return}
  button.disabled=true;
  try{
-  const name=dialog.dataset.peerName||'WireGuard';
+  const name=dialog.dataset.peerName||'AmneziaWG';
   const canvas=document.createElement('canvas');
   canvas.width=900;canvas.height=1210;
   const ctx=canvas.getContext('2d');
@@ -303,12 +305,12 @@ $('shareQr').onclick=async()=>{
   const tariffLabel=dialog.dataset.tariff||'—',expires=dialog.dataset.expires||'—';
   text(tariffLabel.length>22?tariffLabel.slice(0,21)+'…':tariffLabel,82,1045,'bold 29px Arial,sans-serif','#f5f9ff');
   text(expires,488,1045,'bold 29px Arial,sans-serif','#f5f9ff');
-  text('Сканируйте код в приложении WireGuard',450,1140,'22px Arial,sans-serif','#b7c6d9','center');
+  text('Сканируйте код в приложении AmneziaWG',450,1140,'22px Arial,sans-serif','#b7c6d9','center');
   const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('Не удалось создать изображение')),'image/png'));
   const file=new File([blob],'CAESAR-BOT-QR.png',{type:'image/png'});
   const match=name.match(/(?:CAESAR|CEASER)\s+BOT\s*#\s*(\d+)/i);
   const botId=match?'CAESAR BOT #'+match[1]:name;
-  const shareText=botId+'\nВаш QR-код для подключения VPN через WireGuard.\nТариф: '+(dialog.dataset.tariff||'—')+'\nДействует до: '+(dialog.dataset.expires||'—');
+  const shareText=botId+'\nВаш QR-код для подключения VPN через AmneziaWG.\nТариф: '+(dialog.dataset.tariff||'—')+'\nДействует до: '+(dialog.dataset.expires||'—');
   if(navigator.share&&(!navigator.canShare||navigator.canShare({files:[file]}))){
    try{await navigator.share({files:[file],title:'CAESAR BOT #',text:shareText});return}
    catch(e){if(e.name==='AbortError')return}
@@ -337,7 +339,7 @@ $('editDays').addEventListener('input',()=>{
 $('editForm').onsubmit=async e=>{
  e.preventDefault();const d=Object.fromEntries(new FormData(e.currentTarget));const id=Number(d.id);
  delete d.id;
- delete d.note;
+ if(!('note' in d))d.note=clients.find(c=>Number(c.id)===id)?.note||'';
  d.referrer_id=d.referrer_id?Number(d.referrer_id):null;
  if(d.period==='lifetime')d.end_date=null;
  else {
@@ -373,7 +375,7 @@ $('siteNotifications').addEventListener('click',e=>{
  target.classList.add('client-jump-highlight');
  setTimeout(()=>target.classList.remove('client-jump-highlight'),2500);
 });
-$('logout').onclick=async()=>{try{await call('/auth/logout',{method:'POST'})}catch{}token='';localStorage.removeItem(TOKEN_KEY);clients=[];wg=[];$('workspace').classList.add('m-hide');$('loginPane').classList.remove('m-hide');msg('Выход выполнен')};
+$('logout').onclick=async()=>{try{await call('/auth/logout',{method:'POST'})}catch{}token='';sessionStorage.removeItem(TOKEN_KEY);clients=[];wg=[];$('workspace').classList.add('m-hide');$('loginPane').classList.remove('m-hide');msg('Выход выполнен')};
 $('create').elements.start_date.value=iso();
 if(token){
  $('loginPane').classList.add('m-hide');

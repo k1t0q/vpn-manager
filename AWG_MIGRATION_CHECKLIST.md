@@ -1,27 +1,17 @@
-# AmneziaWG migration — compatibility checklist (draft)
+# AWG migration status
 
-This branch is isolated from production `main`. Do not deploy it before end-to-end testing.
+Implemented in the isolated migration branch:
+- Original SQLite desktop/mobile UI targets the new API URL.
+- Short-lived Flask/SQLite auth; no browser root token.
+- Client CRUD, history, renewal, manual referral awards; no expiry-triggered VPN calls.
+- Verified-peer link adapter and proxy for explicit AWG operations.
+- Duplicate edit route and obsolete wg-easy deletion are excluded.
+- Removed retired external-database frontend/backend entrypoints.
 
-## Verified from current frontend
+Validation: four backend integration tests with 59 synthetic records and mocked
+AWG; three recovery parsing tests; JavaScript/Python syntax and diff checks.
+Browser rendering could not be tested because Chromium is blocked by the runtime.
 
-- `app.js` hardcodes `BACKEND = "https://80-90-179-65.sslip.io"` (obsolete).
-- Frontend login and client CRUD use Supabase Auth and `sb.from("clients")`, `sb.from("client_history")`.
-- WG API uses `X-VPN-Token` stored in `localStorage`.
-- Existing `wg_client_id` refers to old wg-easy IDs, not necessarily AWG public keys or SQLite client IDs.
-- `app.js` automatically calls enable/disable based on remaining days in the edit handler; remove that coupling per operator requirement.
-- The backend is reachable at `https://185-23-239-142.sslip.io:8443/health` and reported `5-awg` on 2026-11-12.
-- 59 AWG configs were reported present; one new profile (`me`, SQLite ID 33) was successfully tested.
-
-## Before changing frontend
-
-1. Obtain a sanitized listing of actual backend routes and JSON response shapes for clients, history, referrals, session/login, and WG operations. Do not print tokens or client personal data.
-2. Confirm which endpoint returns client rows and which identifier the WG API expects. Never assume old `wg_client_id` is an AWG key.
-3. Implement server-side admin authentication with short-lived session and strict CORS to GitHub Pages. Avoid embedding the server API token in a public static repository or asking browsers to store a long-lived root token.
-4. Replace Supabase Auth and direct Supabase CRUD with corresponding authenticated backend routes, including history and referrals.
-5. Remove expiry-triggered AWG disable/enable, while retaining subscription display and warnings.
-6. Gate dangerous operations (create/delete/enable/disable) until backend persists both SQLite and AWG config atomically or with recovery.
-7. Test on preview branch, then merge to `main` only after verification. Keep production rollback available.
-
-## Security
-
-Never commit `.env`, client configs, private keys, API tokens, QR images, database files, or identifiable client data to GitHub Pages.
+Not deployed, not merged. Live client data and profile mappings are not verified.
+Linked-profile deletion remains blocked. Multi-step create/link requires inspection
+before retrying a failed request. See README for isolated deployment and live gates.
