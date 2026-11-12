@@ -249,7 +249,6 @@ async function handleClientAction(e){
    if(err?.name!=='AbortError')throw Error('Не удалось открыть отправку файла: '+err.message);
   }
  }else{
-  if(!confirm('Это устройство не поддерживает отправку файла через меню «Поделиться». Скачать конфигурацию вместо этого?'))return;
   const url=URL.createObjectURL(blob);
   const link=document.createElement('a');link.href=url;link.download=fileName;document.body.appendChild(link);link.click();link.remove();
   setTimeout(()=>URL.revokeObjectURL(url),60000);
