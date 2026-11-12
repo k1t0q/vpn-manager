@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import sqlite3
 import subprocess
 import tempfile
@@ -71,6 +72,34 @@ class AWGRuntime:
     def peers(self):
         result = self._run(['show', self.interface, 'peers'])
         return set(result.split())
+
+    def allowed_ips(self):
+        result = self._run(['show', self.interface, 'allowed-ips'])
+        networks = []
+        for line in result.splitlines():
+            fields = line.split(None, 1)
+            if len(fields) == 2 and fields[1] != '(none)':
+                networks.extend(ipaddress.ip_network(n.strip(), strict=False)
+                                for n in fields[1].split(','))
+        return networks
+
+    def server_public_key(self):
+        return self._run(['show', self.interface, 'public-key']).strip()
+
+    def new_keys(self):
+        private = self._run(['genkey']).strip()
+        try:
+            result = subprocess.run(['awg', 'pubkey'], input=private+'\n',
+                                    capture_output=True, text=True, timeout=10,
+                                    check=True)
+        except (subprocess.SubprocessError, OSError):
+            raise StateError('AWG key generation failed') from None
+        public = result.stdout.strip()
+        psk = self._run(['genpsk']).strip()
+        if not all(re.fullmatch(r'[A-Za-z0-9+/]{43}=', k)
+                   for k in (private, public, psk)):
+            raise StateError('AWG returned invalid key material')
+        return private, public, psk
 
     def is_down(self):
         result = subprocess.run(['ip', 'link', 'show', 'dev', self.interface],
@@ -183,8 +212,26 @@ class PeerStore:
             self.runtime.peers()  # Fail closed while AWG is unavailable.
             self.runtime.apply(journal['public_key'], journal[direction + '_block'])
         atomic_write(self.config, journal[direction + '_config'].encode())
-        atomic_write(self._metadata(journal['cid']),
-                     journal[direction + '_metadata'].encode())
+        metadata = journal[direction + '_metadata']
+        profile = self._metadata(journal['cid']).parent
+        if metadata is None:
+            # Aborted creation: retain generated material in a private archive,
+            # remove it from the active profile directory, never rotate a live key.
+            if profile.exists():
+                shutil.move(str(profile), str(self.state / ('aborted-profile-' + uuid.uuid4().hex)))
+                sync_dir(self.profiles)
+        else:
+            if not profile.exists() and journal.get('new_profile_backup'):
+                backup = Path(journal['new_profile_backup'])
+                if self.state.resolve() not in backup.resolve().parents:
+                    raise StateError('Invalid profile recovery path')
+                temporary = self.profiles / ('.recover-' + uuid.uuid4().hex)
+                shutil.copytree(backup, temporary)
+                os.replace(temporary, profile)
+                sync_dir(self.profiles)
+            atomic_write(self._metadata(journal['cid']), metadata.encode())
+        for change in journal.get('related_metadata', []):
+            atomic_write(self._metadata(change['cid']), change[direction].encode())
         pending.rename(self.state / ('recovered-' + uuid.uuid4().hex + '.json'))
         sync_dir(self.state)
         return direction
@@ -280,3 +327,4 @@ class PeerStore:
                 (self.state / 'pending.json').rename(backup_dir / 'committed.json')
                 sync_dir(self.state)
                 return result
+
