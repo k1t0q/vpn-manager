@@ -1,6 +1,7 @@
 (()=>{
  'use strict';
  const $=id=>document.getElementById(id),handle=location.pathname.slice(1),token=location.hash.slice(1);
+ const incyMobile=incyMobileDevice(navigator);
  const valid=/^[A-Za-z0-9_-]{22}$/.test(handle)&&/^[A-Za-z0-9_-]{43}$/.test(token);
  let profile=null,file=null,qrUrl=null,importUrl=null,importPreparing=false;
  const status=text=>{$('status').textContent=text};
@@ -17,9 +18,10 @@
   $('subscriptionHint').textContent=data.lifetime?'Бессрочная подписка.':data.days_left===0?'Срок подписки истёк. Обратитесь к администратору для продления.':'Продление отобразится здесь автоматически.';
   $('vpnState').textContent=data.available?'Доступ включён':!data.enabled?'Доступ выключен':'Подписка истекла';
   for(const id of ['download','qr'])$(id).disabled=!data.available;
-  $('openApp').hidden=!data.import_pilot;$('incyHint').hidden=!data.import_pilot;
+  $('openApp').hidden=!data.import_pilot||!incyMobile;$('incyHint').hidden=!data.import_pilot;
+  if(data.import_pilot&&!incyMobile)$('incyHint').textContent='Тест INCY доступен только на мобильном устройстве. На Windows используйте AmneziaWG: эта сборка INCY не поддерживает подключение AmneziaWG.';
   $('openApp').disabled=!data.available||!importUrl;
-  if(data.import_pilot&&data.available)prepareIncy();
+  if(data.import_pilot&&data.available&&incyMobile)prepareIncy();
   status('');
  }
  async function busy(button,action){if(button.disabled)return;button.disabled=true;button.setAttribute('aria-busy','true');try{await action()}catch(error){status(error.message)}finally{button.removeAttribute('aria-busy');button.disabled=!profile?.available;if(button.id==='login')button.disabled=false}}
@@ -28,6 +30,7 @@
  $('download').addEventListener('click',()=>busy($('download'),async()=>{status('Получаем профиль…');file=await getFile();const url=URL.createObjectURL(file),a=document.createElement('a');a.href=url;a.download=file.name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);status('Профиль скачан. Импортируйте его в VPN-приложение.')}));
  $('qr').addEventListener('click',()=>busy($('qr'),async()=>{status('Получаем QR-код…');const response=await api('qr');if(qrUrl)URL.revokeObjectURL(qrUrl);qrUrl=URL.createObjectURL(await response.blob());$('qrImage').src=qrUrl;$('qrTitle').textContent=profile.label;$('qrDialog').showModal();status('')}));
  $('closeQr').addEventListener('click',()=>{$('qrDialog').close();$('qrImage').removeAttribute('src');if(qrUrl)URL.revokeObjectURL(qrUrl);qrUrl=null});
+ function incyMobileDevice(agent){return /Android|iPhone|iPad|iPod/.test(agent.userAgent)||(/Mac/.test(agent.platform)&&agent.maxTouchPoints>1)}
  function makeIncyImport(bytes){let binary='';for(const byte of bytes)binary+=String.fromCharCode(byte);return 'incy://import/'+btoa(binary)}
  async function prepareIncy(){
   if(importUrl||importPreparing)return;
@@ -39,7 +42,7 @@
   finally{importPreparing=false;button.removeAttribute('aria-busy')}
  }
  $('openApp').addEventListener('click',()=>{
-  if(!profile?.import_pilot||!profile.available||!importUrl)return;
+  if(!incyMobile||!profile?.import_pilot||!profile.available||!importUrl)return;
   status('Открываем INCY. Подтвердите импорт в приложении.');
   window.location.href=importUrl;
   setTimeout(()=>{if(document.visibilityState==='visible')status('Если INCY не открылся, установите или обновите приложение по ссылке ниже. Конфиг и QR также доступны.')},2500);
