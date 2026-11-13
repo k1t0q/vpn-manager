@@ -61,6 +61,19 @@ class ProvisionTests(unittest.TestCase):
   with sqlite3.connect(self.db) as con:self.assertEqual(con.execute('SELECT note,wg_client_id FROM clients WHERE id=61').fetchone(),('Keep this note','61'))
   self.assertEqual((self.profiles/'61/client.conf').stat().st_mode & 0o077,0)
   self.assert_originals()
+ def test_profile_numbers_are_reserved_separately_and_not_reused_on_retry(self):
+  with sqlite3.connect(self.db) as con:
+   con.execute('CREATE TABLE awg_profile_labels(client_id INTEGER PRIMARY KEY,label_number INTEGER NOT NULL UNIQUE)')
+   con.execute('INSERT INTO awg_profile_labels VALUES(1,500)')
+  result=self.create()
+  self.assertEqual(result['profile_name'],'CAESAR BOT #501')
+  self.assertEqual(self.create(),result)
+  meta=json.loads((self.profiles/'61/metadata.json').read_text())
+  self.assertEqual(meta['name'],self.data['name'])
+  self.assertEqual(meta['profile_name'],'CAESAR BOT #501')
+  with sqlite3.connect(self.db) as con:
+   self.assertEqual(con.execute('SELECT label_number FROM awg_profile_labels WHERE client_id=61').fetchone()[0],501)
+  self.assert_originals()
  def test_lost_success_response_does_not_create_second_profile_or_bonus(self):
   self.data['referrer_id']=1
   def fail(point):
