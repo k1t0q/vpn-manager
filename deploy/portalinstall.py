@@ -71,7 +71,8 @@ def main():
  root=Path(state['backup'])
  try:
   run('systemctl','stop','vpn-manager-connect-snapshot.timer');run('systemctl','stop','vpn-manager-connect-snapshot.service')
-  for target,b in materials.items():write(Path(target),b,0o600 if target.startswith('/usr/local/libexec/') else 0o644)
+  for target,b in materials.items():
+   if '/public/' not in target:write(Path(target),b,0o600 if target.startswith('/usr/local/libexec/') else 0o644)
   write(DROPINS[0],b'[Service]\nExecStart=\nExecStart=/opt/vpn-manager-production/venv/bin/python -m gunicorn --workers 1 --bind 127.0.0.1:5057 portal_service:app\n')
   write(DROPINS[1],b'[Service]\nExecStart=\nExecStart=/usr/bin/python3 /usr/local/libexec/vpn-manager-portal-snapshot.py\nEnvironmentFile=/etc/vpn-manager-live-bridge.env\n')
   run('systemctl','daemon-reload')
@@ -108,6 +109,10 @@ def main():
   assert post('download',payload)==(Path('/opt/vpn-manager/awg-clients')/str(pilot)/'client.conf').read_bytes()
   assert b'<svg' in post('qr',payload)
   post('logout',payload)
+  # Publish the manager controls only after the existing isolated test client
+  # has passed HTTPS code-gate, exact-byte download and QR checks.
+  for target,b in materials.items():
+   if '/public/' in target:write(Path(target),b)
   with sqlite3.connect(BASE/'state/links.db') as con:
    rows=con.execute('SELECT client_id,handle FROM links WHERE client_id IN ('+','.join('?' for _ in ids)+')',tuple(map(int,ids))).fetchall()
    assert len(rows)==len(ids) and len({r[1] for r in rows})==len(ids)
@@ -130,3 +135,4 @@ def main():
 if __name__=='__main__':
  with open('/root/vpn-portal-install.lock','a') as lock:
   fcntl.flock(lock,fcntl.LOCK_EX);main()
+
