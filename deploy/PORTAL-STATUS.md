@@ -81,3 +81,35 @@ Main block reduced from 790 to 520 px, smaller gaps/padding, simplified subscrip
 The native “Передать в приложение” file-sharing control was removed because it did not meet the owner's requested direct app import. This supersedes the earlier three-control description. Current controls are .conf download and QR. Credentials/subscription backend and all client data remain unchanged. No services restarted. Backup: /root/vpn-manager-backups/portal-compact-20261113T220823Z; files.json maps the three original assets saved as 0/1/2.
 
 Further research found an explicit raw WireGuard/AmneziaWG deep-import format in INCY's own documentation: https://github.com/INCY-DEV/incy-docs/blob/main/ru/dev-docs/deep-links.en.md (incy://import/{base64-conf}). It is a candidate for an owner-approved separate test, NOT an implemented or physically verified integration. No configurations have been sent to INCY, no application changed, no experimental button published. DefaultVPN direct import remains unconfirmed. A universal reliable browser check of arbitrary app installation must not be simulated with a timer.
+
+## v1.80 — aligned controls and mobile-only INCY experiment
+
+Deployed 14 November 2026 (Moscow).
+Source: be5ea53ad87ae2cba327d52b3247d30cf9daef8d.
+Installer: deploy/uiuniform.py at 6e7647f3d5ad47ed90b8f33fbe0f7483a18c41af.
+GitHub Actions runs 43517624979 and 43517684338 passed. New local checks: nine Python portal/snapshot tests and two Node INCY import-contract/platform tests; both JavaScript syntax checks passed.
+
+Manager layout:
+- Desktop toolbar moved to the right side of the header, visible only after manager login. Dynamic Import Profiles insertion still follows Export CSV in that same toolbar.
+- Equal toolbar button dimensions, consistent gaps and press/hover/focus feedback.
+- Table header/value alignment and equal-height action grid.
+- Personal-link dialog and public account spacing normalized; operation indicators preserve button dimensions.
+- Mobile header remains separate; mobile import remains hidden.
+
+INCY:
+- Owner confirmed manual configuration compatibility, then reported that their Windows build says AmneziaWG is supported only on Linux.
+- No protocol/server/profile changes were made to work around an application limitation. Windows remains on AmneziaWG.
+- Direct-import button is available ONLY for existing disposable client ID 92, and only on mobile browsers (including iPad desktop user agent). It is hidden on Windows/macOS/Linux desktop.
+- Backend exposes a pilot flag only after authenticated profile access. Normal clients do not receive the experimental control.
+- For that one pilot, the authenticated page prepares an unchanged config in browser memory. Clicking uses the documented local URI incy://import/{base64-conf} synchronously, without a file-sharing chooser. No config URI is generated in server logs, GitHub, reports or analytics.
+- The encoding test verifies exact byte-for-byte round trip, including UTF-8 comments. Config/QR downloads remain available.
+- A conditional fallback offers install/update guidance if INCY has not opened. It does NOT claim the browser has proven the app is absent.
+- Documentation: https://docs.incy.cc/deep-links/.
+- Real mobile URI import/connection is PENDING. Manual file compatibility is not treated as proof of deep-link success. Do not roll out the control to all clients until that test succeeds.
+
+Server installer verified authenticated pilot flag true for ID 92 and false for an ordinary client, exact pilot configuration bytes, manager v1.80/header structure, unchanged client/history rows and original profile/config hashes, unchanged Xray/root bridge PIDs. Only the unprivileged public portal backend was restarted; VPN and root bridge were not restarted.
+
+Backup: /root/vpn-manager-backups/ui-uniform-20261113T221612Z.
+files.json maps six previous code/assets to numbered backup files. It also contains WAL-safe copies of working client SQLite and link SQLite. A code rollback restores only those six code/assets and restarts vpn-manager-connect.service; do not restore old client SQLite over current data.
+
+Cloud browser observed manager v1.80, confirmed desktop toolbar is inside header with one reload ID, and displayed the updated portal. Full signed-in layout/device smoke test remains with owner; no credentials were exposed to obtain a screenshot.
