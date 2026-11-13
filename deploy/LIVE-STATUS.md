@@ -25,7 +25,7 @@ Passed: login and loading all 59 original clients; exact 24-hour trial; atomic p
 Final report: /root/vpn-live-verification.json.
 It confirmed original 59 rows and original client.conf bytes unchanged, all original runtime peers preserved (60 runtime peers, including the pre-existing unmanaged test peer), SQLite integrity OK, no original client archived, no pending journal, Xray PID unchanged. AmneziaWG and Xray were not restarted.
 
-The existing five already-expired original subscriptions have an initial access hold, explicitly approved during promotion, to avoid mass disconnection. An explicit subscription change releases the hold for that client.
+The original promotion initially held access for five already-expired subscriptions. On 13 November the owner explicitly approved releasing those holds: client IDs 36, 37, 38, 45 and 47 were disabled, retaining profiles, keys, addresses and history. Their access can be restored after renewal through the existing automatic reactivation logic.
 
 ## Rollback
 
@@ -41,7 +41,7 @@ The exact rollback command is also stored in /var/lib/vpn-manager-production/rol
 ## Remaining verification and limits
 
 Production browser sign-in and final visual checks require the owner to enter the independent production login code. It is stored privately in /root/vpn-manager-live-login-code; never paste it into chat, GitHub or logs.
-Notifications currently use the panel and a durable SQLite notification outbox. External Telegram/email/SMS delivery is not configured.
+Notifications use the panel and a durable SQLite notification outbox. The later Web Push release below adds browser-device delivery; Telegram/email/SMS delivery is not configured.
 The interface boot unit is enabled and its resolved start command was verified; no VPS reboot or VPN restart was performed. The current running interface was not started by this migration.
 Actual test-device connectivity was confirmed by the owner earlier in staging. No external VPN device is available inside this environment for a new production handshake test.
 
@@ -61,3 +61,28 @@ A WAL-aware backup is under /root/vpn-manager-backups/profile-labels-20261113T11
 Live verification retrieved all 58 existing configs through the authenticated API and compared every byte with disk. Labels were unique and correctly formatted. A newly created disposable profile retained its number and config after customer rename and an identical creation retry; the test profile was then archived.
 The browser downloaded a harmless dummy .conf using the exact configuration-download block extracted from the installed production script. No real client credentials were used in this browser fixture. Interactive production sign-in/full button flow still requires the owner session.
 No AmneziaWG/Xray restart, key rotation, client address change or QR payload change occurred.
+
+
+## Daily expiry checks and Web Push — v1.75
+
+The owner requested subscription expiry checks once per 24 hours. The installed production loop uses an interval of 86400 seconds and also checks on service startup. This can delay expiry disconnection by up to 24 hours, including trial subscriptions. The VPN controller is not restarted by the Web Push installation.
+
+Installed app release: 604b5e41ccf46e0e864757963d9a05d857eee9fc.
+Guarded installer: deploy/pushinstall.py at 59614cab27896b34144caaa861c0dd299cf6cf19.
+Private backup: /root/vpn-manager-backups/web-push-20261113T164759Z.
+
+Web Push runs as vpn-panel in a separate systemd oneshot service, scheduled by vpn-manager-push.timer every 15 minutes. It reads the current client snapshot through the existing authenticated loopback bridge and never writes VPN settings. It sends reminders in the 7-day, 3-day, 1-day and expired windows; lifetime subscriptions are excluded. Per-device delivery records suppress successful repeat sends, retry failed sends with backoff, deactivate gone endpoints and recognize a renewed deadline as a new reminder cycle. External delivery is encrypted with aes128gcm and a private VAPID key stored only on the VPS and in the private backup.
+
+The panel now retains only the combined “До 7 дней” and “Истекли” groups. It provides authenticated device subscribe/unsubscribe, enable/test/disable controls, a scoped manifest, icons and service worker for /panel-live/. Endpoints are restricted to recognized push providers; redirects are disabled. API tests cover authorization, malformed subscriptions, SSRF rejection, per-device deduplication, expired subscriptions, renewal, retry/backoff, gone endpoints and a real encryption/decryption round trip without network traffic.
+
+Installer verification passed: API login, authenticated public-key response, scheduler health, push worker run, enabled timer, unchanged AWG disk configuration and peer set, unchanged Xray and root bridge PIDs, and preserved daily expiry interval. AmneziaWG and Xray were not restarted. Before activation, dependencies and private-key readability were checked as vpn-panel. Earlier installation attempts rolled back code automatically when these permission checks failed; they did not restore old client databases.
+
+Actual delivery to the owner's iPhone remains to be confirmed. On iOS 16.4 or newer: open the production URL in Safari, use Share → Add to Home Screen, open the installed icon, sign in, tap “Включить уведомления”, allow notifications, then tap “Проверить push”. A successful push-service HTTP response alone does not prove handset display.
+
+Owner-only code rollback:
+
+```bash
+python3 /root/vpn-pushinstall.py --rollback /root/vpn-manager-backups/web-push-20261113T164759Z
+```
+
+This disables the push timer and restores the previous panel/API code. It retains the current database, VPN state, profile history and device key; never manually restore an old client database to roll back a UI release.
