@@ -8,7 +8,7 @@ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const msg=(t,bad=false)=>{$('status').textContent=t;$('status').className=bad?'m-error':'m-ok'};
 const iso=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')};
 const date=s=>s?new Date(s.slice(0,10)+'T12:00:00'):null;
-const remaining=c=>c.period==='lifetime'?null:(c.end_date?Math.ceil((c.end_date.includes('T')?Date.parse(c.end_date)-Date.now():date(c.end_date)-date(iso()))/86400000):null);
+const remaining=c=>c.period==='lifetime'?null:(c.end_date?Math.ceil((Date.parse(c.end_date.includes('T')?c.end_date:c.end_date.slice(0,10)+'T00:00:00+03:00')-Date.now())/86400000):null);
 const tariff={'trial':'Пробный — 24 часа','14d':'14 дней','2m':'2 месяца','1m':'1 месяц','6m':'6 месяцев','12m':'12 месяцев','lifetime':'Навсегда ∞','imported':'Импорт','1':'1 месяц','6':'6 месяцев','12':'12 месяцев'};
 const formatDate=v=>!v?'—':String(v).includes('T')?new Date(v).toLocaleString('ru-RU',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):String(v).slice(0,10).split('-').reverse().join('.');
 function lastSeen(w){
@@ -53,15 +53,35 @@ async function call(path,opts={}){
  return d;
 }
 const dataList=d=>{const x=d.clients??d.data??d; if(!Array.isArray(x))throw Error('Неизвестный формат списка клиентов');return x};
+function alertWindow(c){
+ const days=remaining(c);
+ return c.period==='lifetime'||days===null||!Number.isFinite(days)?null:days<=0?'expired':days<=1?'one_day':days<=3?'three_days':days<=7?'seven_days':null;
+}
 function renderAlerts(){
  const box=$('siteNotifications');if(!box)return;
- const expired=clients.filter(c=>c.period!=='lifetime'&&remaining(c)!==null&&remaining(c)<=0).sort((a,b)=>remaining(a)-remaining(b));
- const soon=clients.filter(c=>c.period!=='lifetime'&&remaining(c)>0&&remaining(c)<=3).sort((a,b)=>remaining(a)-remaining(b));
- const section=(type,title,items)=>'<details name="vpn-attention" class="attention-group '+type+'"><summary>'+title+' <span class="attention-count">'+items.length+'</span><span class="attention-chevron" aria-hidden="true"></span></summary><div class="attention-list">'+(items.length?items.map(c=>'<button type="button" class="attention-person" data-jump-client="'+c.id+'"><div><b>'+esc(c.name)+'</b><small>До '+esc(formatDate(c.end_date))+'</small></div><strong>'+(type==='expired'?(remaining(c)===0?'Сегодня':Math.abs(remaining(c))+' дн. назад'):remaining(c)+' дн.')+'</strong></button>').join(''):'<div class="attention-empty">Нет клиентов</div>')+'</div></details>';
+ const groups=[['expired','Истекли'],['one_day','До 1 дня'],['three_days','До 3 дней'],['seven_days','До 7 дней']];
+ const open=box.querySelector('.attention-group[open]')?.dataset.alertGroup;
  box.classList.remove('hidden');
- const open=box.querySelector('.attention-group[open]')?.classList.contains('expired')?'expired':box.querySelector('.attention-group[open]')?.classList.contains('soon')?'soon':null;
- box.innerHTML=section('expired','Истекли',expired)+section('soon','До 3 дней',soon);
- if(open)box.querySelector('.attention-group.'+open)?.setAttribute('open','');
+ box.innerHTML=groups.map(([key,title])=>{
+  const items=clients.filter(c=>alertWindow(c)===key).sort((a,b)=>remaining(a)-remaining(b));
+  const type=key==='expired'?'expired':'soon';
+  return '<details name="vpn-attention" data-alert-group="'+key+'" class="attention-group '+type+'"><summary>'+title+' <span class="attention-count">'+items.length+'</span><span class="attention-chevron" aria-hidden="true"></span></summary><div class="attention-list">'+(items.length?items.map(c=>'<button type="button" class="attention-person" data-jump-client="'+c.id+'"><div><b>'+esc(c.name)+'</b><small>До '+esc(formatDate(c.end_date))+'</small></div><strong>'+(key==='expired'?(remaining(c)===0?'Сегодня':Math.abs(remaining(c))+' дн. назад'):remaining(c)+' дн.')+'</strong></button>').join(''):'<div class="attention-empty">Нет клиентов</div>')+'</div></details>';
+ }).join('');
+ if(open)box.querySelector('[data-alert-group="'+open+'"]')?.setAttribute('open','');
+}
+function notificationSummary(data){
+ let seen;try{seen=new Set(JSON.parse(sessionStorage.getItem('vpn_manager_notices_v1')||'[]'))}catch{seen=new Set()}
+ const counts={},byId=new Map(clients.map(c=>[String(c.id),c]));
+ for(const notice of Array.isArray(data?.notifications)?data.notifications:[]){
+  const client=byId.get(String(notice.client_id));
+  if(!client||client.end_date!==notice.end_date||alertWindow(client)!==notice.event_type)continue;
+  const key=JSON.stringify([notice.client_id,notice.event_type,notice.end_date]);
+  if(seen.has(key))continue;
+  seen.add(key);counts[notice.event_type]=(counts[notice.event_type]||0)+1;
+ }
+ sessionStorage.setItem('vpn_manager_notices_v1',JSON.stringify([...seen].slice(-1000)));
+ const names={seven_days:'До 7 дней',three_days:'До 3 дней',one_day:'До 1 дня',expired:'Истекли'};
+ return Object.entries(counts).map(([kind,count])=>names[kind]+': '+count).join(' · ');
 }
 function render(){
  const q=$('search').value.trim().toLowerCase(),f=$('filter').value;
@@ -101,8 +121,8 @@ function render(){
  $('referrer').innerHTML='<option value="">Никто</option>'+clients.map(c=>'<option value="'+c.id+'">'+esc(c.name)+'</option>').join('');
  $('referrer').value=current;
 }
-async function refresh(){
- const [a,b,caps]=await Promise.all([call('/api/clients'),call('/api/wg/clients').catch(e=>({clients:[],error:e.message})),call('/health').catch(()=>({}))]);
+async function refresh(silent=false){
+ const [a,b,caps,notices]=await Promise.all([call('/api/clients'),call('/api/wg/clients').catch(e=>({clients:[],error:e.message})),call('/health').catch(()=>({})),call('/api/notifications').catch(()=>({notifications:[]}))]);
  capabilities=caps;
  let importer=$('importProfiles');
  if(!importer){importer=document.createElement('button');importer.id='importProfiles';importer.className='secondary';importer.textContent='Импорт профилей';$('exportCsv').insertAdjacentElement('afterend',importer);importer.onclick=importProfiles}
@@ -113,7 +133,10 @@ async function refresh(){
  // timestamps can be missing or in the future; they must not hide new clients.
  clients.sort((a,b)=>Number(b.id||0)-Number(a.id||0));
  wg=b.clients||[];wgAvailable=!b.error;render();
- msg(b.error?'Клиенты загружены, AmneziaWG недоступен: '+b.error:capabilities.read_only?'Тестовая панель доступна только для просмотра':'Данные обновлены',!!b.error);
+ const notice=notificationSummary(notices);
+ if(b.error)msg('Клиенты загружены, AmneziaWG недоступен: '+b.error,true);
+ else if(notice)msg('Уведомления: '+notice);
+ else if(!silent)msg(capabilities.read_only?'Тестовая панель доступна только для просмотра':'Данные обновлены');
 }
 $('toggleCode').onclick=()=>{const field=$('code'),visible=field.type==='password';field.type=visible?'text':'password';$('toggleCode').textContent=visible?'Скрыть':'Показать';$('toggleCode').setAttribute('aria-label',visible?'Скрыть код':'Показать код')};
 $('login').onsubmit=async e=>{
@@ -470,5 +493,15 @@ if(mobileActions){
  new MutationObserver(syncMobileActions).observe($('workspace'),{attributes:true,attributeFilter:['class']});
  syncMobileActions();
 }
+// Refresh on-site warnings while the panel is open; expiry itself runs server-side.
+let backgroundRefreshing=false;
+async function refreshWarnings(){
+ if(!token||document.visibilityState!=='visible'||backgroundRefreshing||document.querySelector('dialog[open]'))return;
+ backgroundRefreshing=true;
+ try{await refresh(true)}catch{}finally{backgroundRefreshing=false}
+}
+setInterval(refreshWarnings,60000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshWarnings()});
+
 })();
 
