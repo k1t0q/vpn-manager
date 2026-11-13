@@ -34,7 +34,7 @@ function wgDisplay(c,mobile=false){
  if(!w)return '<span class="wg-status off">Не найден</span>';
  const profile='<small class="vpn-profile-name">'+esc(peerLabel(c))+'</small>';
  const status='<span class="wg-status '+(w.enabled?'on':'off')+'">'+(w.enabled?'● VPN включён':'● VPN отключён')+'</span>';
- if(mobile)return profile+'<span class="mobile-vpn-line">'+status+'<span class="mobile-vpn-meta">'+(w.address?' · IP: '+esc(w.address):'')+' · '+esc(lastSeen(w))+'</span></span>';
+ if(mobile)return '<span class="mobile-vpn-line">'+status+'<span class="mobile-vpn-meta">'+(w.address?' · IP: '+esc(w.address):'')+' · '+esc(lastSeen(w))+'</span></span>';
  return profile+status+(w.address?'<small>IP: '+esc(w.address)+' / активность: '+esc(lastSeen(w))+'</small>':'<small>Активность: '+esc(lastSeen(w))+'</small>');
 }
 
