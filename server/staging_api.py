@@ -40,7 +40,7 @@ def create_app(config=None):
     result=requests.get(app.config['AWG_URL'].rstrip('/')+'/api/managed/health',headers={'X-VPN-Token':app.config['AWG_TOKEN']},timeout=2)
     if result.ok:capabilities=result.json()
    except (requests.RequestException,ValueError):pass
-  return jsonify(ok=True,version='sqlite-awg-panel-2',auto_expiry=bool(capabilities.get('auto_expiry')),subscriptions=bool(capabilities.get('subscriptions')),scheduler_ok=bool(capabilities.get('scheduler_ok')),notification_delivery=capabilities.get('notification_delivery','unconfigured'),login_configured=bool(app.config['ADMIN_CODE']),awg_bridge_configured=bool(app.config['AWG_TOKEN']),managed_test_only=bool(capabilities.get('managed_test_only',True)),profile_delivery=bool(capabilities.get('profile_delivery')),profile_import=bool(capabilities.get('profile_import')))
+  return jsonify(ok=True,version='sqlite-awg-panel-2',auto_expiry=bool(capabilities.get('auto_expiry')),subscriptions=bool(capabilities.get('subscriptions')),scheduler_ok=bool(capabilities.get('scheduler_ok')),notification_delivery=capabilities.get('notification_delivery','unconfigured'),login_configured=bool(app.config['ADMIN_CODE']),awg_bridge_configured=bool(app.config['AWG_TOKEN']),managed_test_only=bool(capabilities.get('managed_test_only',True)),profile_delivery=bool(capabilities.get('profile_delivery')),profile_import=bool(capabilities.get('profile_import')),read_only=bool(capabilities.get('read_only')))
  @app.post('/auth/login')
  def login():
   now=time.time();key=request.remote_addr;recent=[t for t in attempts.get(key,[]) if t>now-300];attempts[key]=recent

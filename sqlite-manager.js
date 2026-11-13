@@ -93,6 +93,8 @@ function render(){
  const inviteBadge=c=>inviteCount(c)?'<span class="invite-count">Пригласил: '+inviteCount(c)+'</span>':'';
  $('rows').innerHTML=shown.map(c=>'<tr data-client-id="'+c.id+'"><td><b>'+esc(c.name)+'</b>'+inviteBadge(c)+deliveryBadge(c)+(c.note?'<small>'+esc(c.note)+'</small>':'')+'</td><td>'+esc(c.phone||'—')+'</td><td>'+referred(c)+'</td><td>'+wgDisplay(c)+'</td><td>'+label(c)+'</td><td>'+formatDate(c.start_date)+'</td><td>'+ (c.period==='lifetime'?'Навсегда':formatDate(c.end_date))+'</td><td><b>'+remain(c)+'</b></td><td>'+subscriptionStatus(c)+'</td><td>'+actions(c)+'</td></tr>').join('');
  $('cards').innerHTML=shown.map(c=>'<article class="card" data-client-id="'+c.id+'"><div class="card-top"><div><h3 class="card-vpn-name">'+esc(peerLabel(c))+'</h3><div class="card-client-name">'+esc(c.name)+'</div>'+inviteBadge(c)+deliveryBadge(c)+(c.phone?'<small>'+esc(c.phone)+'</small>':'')+'</div>'+subscriptionStatus(c)+'</div><div class="info"><div><small>Тариф</small><b>'+label(c)+'</b></div><div><small>До</small><b>'+(c.period==='lifetime'?'Навсегда':formatDate(c.end_date))+'</b></div><div><small>Осталось</small><b>'+remain(c)+' дн.</b></div></div>'+(c.referrer_id?'<div class="note">Пригласил: '+referred(c)+'</div>':'')+'<div class="note mobile-vpn-note">'+wgDisplay(c,true)+'</div><details class="manage"><summary>Управление подпиской</summary><div class="manage-body">'+actions(c)+'</div></details></article>').join('');
+ if(capabilities.read_only)document.querySelectorAll('#rows button,#cards button').forEach(button=>button.disabled=true);
+ $('create').querySelector('[type=submit]').disabled=!!capabilities.read_only;
  $('empty').classList.toggle('hidden',shown.length>0);
  const current=$('referrer').value;
  $('referrer').innerHTML='<option value="">Никто</option>'+clients.map(c=>'<option value="'+c.id+'">'+esc(c.name)+'</option>').join('');
@@ -111,7 +113,7 @@ async function refresh(){
   return bd-ad || Number(b.id||0)-Number(a.id||0);
  });
  wg=b.clients||[];wgAvailable=!b.error;render();
- msg(b.error?'Клиенты загружены, AmneziaWG недоступен: '+b.error:'Данные обновлены',!!b.error);
+ msg(b.error?'Клиенты загружены, AmneziaWG недоступен: '+b.error:capabilities.read_only?'Тестовая панель доступна только для просмотра':'Данные обновлены',!!b.error);
 }
 $('toggleCode').onclick=()=>{const field=$('code'),visible=field.type==='password';field.type=visible?'text':'password';$('toggleCode').textContent=visible?'Скрыть':'Показать';$('toggleCode').setAttribute('aria-label',visible?'Скрыть код':'Показать код')};
 $('login').onsubmit=async e=>{

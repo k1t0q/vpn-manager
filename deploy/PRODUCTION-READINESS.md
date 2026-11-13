@@ -16,22 +16,37 @@ in a frozen `initial_expiry_hold` map. Their access remains enabled on the first
 scheduler run and during contact-only edits. A subscription change consumes the
 hold permanently. Normal future expiration/reactivation remains automatic.
 
-## Blocking evidence before an activation package can be finalized
+## Reviewed promotion package — owner activation pending
 
-- Identify the service/process listening on 5052 and any old API writer on 5050.
-  The current production app has a catch-all proxy route, so stopping only the
-  named main API may leave the actual legacy database writer running.
-- Review the new sanitized `legacy_api_writers` and `awg_boot_evidence` audit
-  fields. Do not guess service names or stop unrelated Python processes.
-- Clean up disposable live staging profiles after the successful device test.
-- Freeze production code/assets outside `/srv/vpn-manager-stage`, back up the
-  working SQLite with the backup API and preserve all profile/config material.
-- Stop and prevent the old staging writer from restarting before allowing a
-  production writer. Independent state directories must never concurrently
-  rewrite the same AWG configuration.
-- Finish and review a pinned owner-run installer and code-only rollback. The
-  activation record must be root-owned/private and must require explicit owner
-  approval. No current workflow creates that record.
+- The 5050 service is `vpn-manager.service`; the 5052 service is
+  `vpn-manager-panel-test.service`. The staging writer is
+  `vpn-manager-awg-readonly.service`. All three must be stopped/gated before
+  production writes are enabled. No other process is killed by the installer.
+- The disposable device-test client has been archived. A fresh audit confirms
+  59 original clients, 59 disk peers, all 60 original runtime peers, intact
+  production history (8 records), and no pending operation.
+- `promote_live.py` defaults to checks only. `--activate-approved` is required
+  after the owner separately approves production activation. It verifies pinned
+  source digests, original source identities, the database/profile baseline,
+  five expiry holds, ports, old API dependencies and potential cron/timer/SQLite
+  writers. An unexpected condition stops promotion for review.
+- Production code/assets are root-owned and frozen outside the staging release
+  directory. The live API runs as a new `vpn-panel` user with a separate session
+  database; `vpn-deploy` and its SSH key receive no production access. A fresh
+  loopback bridge token is stored only in private root environment files. The
+  existing administrator login code is reused, never printed.
+- The owner-run script creates WAL-aware backups before and after freezing the
+  legacy writers, plus private profile/config/API archives. It never overwrites
+  the working SQLite, creates client profiles, or rotates existing keys during
+  promotion. It requires unchanged VPN config/runtime peers before and after
+  activation. New Caddy routes preserve all listeners, including Xray port 443.
+- Planned live routes are `/panel-live/` and `/live-api/` on the existing 8443
+  site. The test panel continues through a new read-only snapshot service on
+  loopback 5054. Automatic staging deployments remain isolated from production.
+- The exact code-only rollback command is printed with the private backup path.
+  It restores the previous API routing and service state, never restores an old
+  database/profile/AWG configuration, and never invokes an AWG/Xray lifecycle
+  command. On activation failure this rollback is attempted automatically.
 
 The draft production entry point refuses startup without an approved private
 activation record, with an active staging writer, or if baseline key/IP/runtime
@@ -42,6 +57,10 @@ are panel alerts and a durable notification outbox. Interface autostart is
 enabled in systemd, but the origin of the currently manually-owned interface
 has not been established and a reboot has not been performed.
 
-Validation: 72 Python tests and 3 JavaScript tests, including legacy ID mapping,
+Validation: 78 Python tests and 3 JavaScript tests, including legacy ID mapping,
 mixed historic owners, exact trial referral deadlines, import crash/replay,
-delivery deduplication, initial expiry holds and irreversible hold consumption.
+delivery deduplication, initial expiry holds, irreversible hold consumption,
+scheduler readiness, snapshot write rejection, canonical deletion and code-only
+rollback boundaries. The new production services cannot be checked live until
+the owner approves and runs the promotion package. No current workflow deploys
+or activates them.
