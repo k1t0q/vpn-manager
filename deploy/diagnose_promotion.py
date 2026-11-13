@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import pwd
+import re
 import sqlite3
 import subprocess
 import tempfile
@@ -74,6 +75,23 @@ def main():
     database=Path('/opt/vpn-manager/data/clients-staging.db')
     with sqlite3.connect(database.as_uri()+'?mode=ro',uri=True) as con:
         report['working_database']=dict(clients=con.execute('SELECT count(*) FROM clients').fetchone()[0],history=con.execute('SELECT count(*) FROM client_history').fetchone()[0],integrity_ok=con.execute('PRAGMA quick_check').fetchone()[0]=='ok')
+        ids={str(row[0]) for row in con.execute('SELECT id FROM clients')}
+    original=json.loads(Path('/var/lib/vpn-manager-awg-stage/baseline.json').read_text())
+    live=command(['awg','show','awg-test','peers'])
+    if live.returncode==0:
+        keys=set(live.stdout.split());blocks={}
+        for body in re.split(r'(?m)^[ \t]*\[Peer\][ \t]*\r?$',Path('/etc/amnezia/amneziawg/awg-test.conf').read_text())[1:]:
+            fields={}
+            for line in body.splitlines():
+                if '=' in line and not line.lstrip().startswith('#'):
+                    name,value=line.split('=',1);fields[name.strip()]=value.strip()
+            blocks[fields.get('PublicKey')]=fields
+        matched=0
+        for cid in original['protected_ids']:
+            cid=str(cid);meta=json.loads((Path('/opt/vpn-manager/awg-clients')/cid/'metadata.json').read_text());public_key=meta['public_key']
+            matched+=int(cid in ids and str(meta['client_id'])==cid and public_key in keys and blocks.get(public_key,{}).get('AllowedIPs')==meta['address']+'/32')
+        report['vpn_invariants']=dict(matched_original_clients=matched,disk_peers=len(blocks),runtime_peers=len(keys),original_disk_fields_unchanged=all(blocks.get(k)==v for k,v in original['peers'].items()),original_runtime_peers_preserved=set(original['runtime_peers']).issubset(keys))
+    else:report['vpn_invariants']=dict(runtime_unavailable=True)
     if (auth/'sessions.db').exists():
         with sqlite3.connect((auth/'sessions.db').as_uri()+'?mode=ro',uri=True) as con:
             table=con.execute("SELECT 1 FROM sqlite_master WHERE name='panel_sessions'").fetchone()
