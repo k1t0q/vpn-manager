@@ -231,14 +231,19 @@ async function handleClientAction(e){
  dialog.showModal();
  dialog.focus({preventScroll:true});
  }else if(btn.dataset.act==='edit'){
- const f=$('editForm');f.elements.end_date.type=c.period==='trial'?'datetime-local':'date';f.elements.end_date.step='1';
- for(const key of ['id','name','phone','note','start_date','period','end_date'])f.elements[key].value=key==='end_date'?(c.period==='trial'?localDateTime(c[key]):(c[key]||'').slice(0,10)):(c[key]??'');
+ const f=$('editForm');
+ f.elements.period.querySelector('[data-legacy-period]')?.remove();
+ if(!['trial','1m','6m','12m','lifetime'].includes(c.period)){
+  const option=document.createElement('option');option.value=c.period;option.textContent='Текущий: '+(tariff[c.period]||c.period);option.hidden=true;option.disabled=true;option.dataset.legacyPeriod='true';f.elements.period.appendChild(option);
+ }
+ f.elements.end_date.type=c.period==='trial'?'datetime-local':'date';f.elements.end_date.step='1';
+ for(const key of ['id','name','phone','start_date','period','end_date'])f.elements[key].value=key==='end_date'?(c.period==='trial'?localDateTime(c[key]):(c[key]||'').slice(0,10)):(c[key]??'');
  const inviter=$('editReferrer');
  inviter.innerHTML='<option value="">Никто</option>'+clients.filter(x=>String(x.id)!==String(c.id)).map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join('');
  inviter.value=c.referrer_id==null?'':String(c.referrer_id);
  syncEditEndDate();
  syncEditDays();
- f.dataset.original=JSON.stringify(Object.fromEntries(new FormData(f)));
+ f.dataset.original=JSON.stringify({...Object.fromEntries(new FormData(f)),period:f.elements.period.value});
  $('editDialog').showModal();
  requestAnimationFrame(()=>{if(document.activeElement?.blur)document.activeElement.blur()});
  }else if(btn.dataset.act==='wg-toggle'){
@@ -367,9 +372,9 @@ $('editDays').addEventListener('input',()=>{
 });
 $('editForm').onsubmit=async e=>{
  e.preventDefault();const d=Object.fromEntries(new FormData(e.currentTarget));const id=Number(d.id);
+ d.period=e.currentTarget.elements.period.value;
  const selectedPeriod=d.period;
  delete d.id;
- if(!('note' in d))d.note=clients.find(c=>Number(c.id)===id)?.note||'';
  d.referrer_id=d.referrer_id?Number(d.referrer_id):null;
  if(d.period==='lifetime')d.end_date=null;
  else {
