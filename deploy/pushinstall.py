@@ -122,12 +122,13 @@ def main():
             library.chmod((library.stat().st_mode & 0o777) | (0o555 if library.is_dir() else 0o444))
     run('runuser','-u','vpn-panel','--',PYTHON,'-c','import cryptography.hazmat.primitives.serialization;import pywebpush')
     account = pwd.getpwnam('vpn-panel')
-    KEY.parent.mkdir(mode=0o750,exist_ok=True); os.chown(KEY.parent,0,account.pw_gid)
+    KEY.parent.mkdir(mode=0o750,exist_ok=True); KEY.parent.chmod(0o750); os.chown(KEY.parent,0,account.pw_gid)
     if not KEY.exists():
         run(PYTHON,'-c',"from pathlib import Path;from cryptography.hazmat.primitives.asymmetric import ec;from cryptography.hazmat.primitives import serialization;k=ec.generate_private_key(ec.SECP256R1());Path('/etc/vpn-manager-push/private.pem').write_bytes(k.private_bytes(serialization.Encoding.PEM,serialization.PrivateFormat.PKCS8,serialization.NoEncryption()))")
     if KEY.is_symlink(): raise SystemExit('Symlink key rejected')
     KEY.chmod(0o640); os.chown(KEY,0,account.pw_gid)
     shutil.copy2(KEY,backup/'push-private.pem'); (backup/'push-private.pem').chmod(0o600)
+    run('runuser','-u','vpn-panel','--',PYTHON,'-c',"from pathlib import Path;from cryptography.hazmat.primitives import serialization;serialization.load_pem_private_key(Path('/etc/vpn-manager-push/private.pem').read_bytes(),password=None)")
     service = '''[Unit]
 Description=VPN MANAGER Web Push reminders
 After=network-online.target vpn-manager-live-bridge.service
