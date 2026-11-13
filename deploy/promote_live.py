@@ -39,7 +39,7 @@ EXPECTED_SOURCE={'app.py':'f06f51bfcf7edfa0a328de680a41d24dce2172c1024afedcbaac6
 
 
 def run(*args, check=True):
-    return subprocess.run(args,check=check,capture_output=True,text=True,timeout=40).stdout.strip()
+    return subprocess.run(args,check=check,capture_output=True,text=True,timeout=40,cwd="/").stdout.strip()
 
 
 def write(path, data, mode=0o600):
@@ -110,11 +110,12 @@ def check_other_writers(allow_legacy=True):
         except (FileNotFoundError,ProcessLookupError,PermissionError):continue
 
 
-def preflight():
-    if STATE.exists() or CODE.exists() or SITE.exists() or AUTH.exists():raise RuntimeError('Production paths already exist; inspect before retrying')
+def preflight(resume=False):
+    if not resume and (STATE.exists() or CODE.exists() or SITE.exists() or AUTH.exists()):raise RuntimeError('Production paths already exist; inspect before retrying')
     try:pwd.getpwnam('vpn-panel')
     except KeyError:pass
-    else:raise RuntimeError('vpn-panel account already exists; review required')
+    else:
+        if not resume:raise RuntimeError('vpn-panel account already exists; review required')
     for name,digest in EXPECTED_SOURCE.items():
         if hashlib.sha256((Path('/opt/vpn-manager')/name).read_bytes()).hexdigest()!=digest:raise RuntimeError('Legacy production source changed')
     if any(path.is_symlink() or path.stat().st_uid!=0 for path in (DB,DB.parent,PROFILES)):
@@ -280,8 +281,7 @@ def activate(materials,checked):
             if path.exists():archive.add(path,arcname=str(path).lstrip('/'))
     backup_sqlite(DB,backup/'clients-before-stop.db')
     # All preparation is complete before stopping a writer. No VPN unit is started.
-    for directory,mode in ((STATE,0o700),(CODE,0o700),(SITE,0o755),(SITE/'server',0o755),(SITE/'public',0o755),(AUTH,0o700)):
-        directory.mkdir(mode=mode)
+    prepare_directories()
     for path,data in materials.items():
         if path.endswith('.py') and not path.startswith('tests/'):
             write(CODE/Path(path).name,data)
@@ -291,7 +291,8 @@ def activate(materials,checked):
     write(SITE/'public/config.js',b'window.VPN_MANAGER_CONFIG={API_BASE:"/live-api"};\n',0o644)
     write(STATE/'template.conf',(PROFILES/next(iter(base['clients']))/'client.conf').read_bytes())
     write(STATE/'baseline.json',json.dumps(base).encode())
-    run('useradd','--system','--no-create-home','--home-dir','/nonexistent','--shell','/usr/sbin/nologin','vpn-panel')
+    try:pwd.getpwnam('vpn-panel')
+    except KeyError:run('useradd','--system','--no-create-home','--home-dir','/nonexistent','--shell','/usr/sbin/nologin','vpn-panel')
     account=pwd.getpwnam('vpn-panel');os.chown(AUTH,account.pw_uid,account.pw_gid)
     freeze_runtime()
     with sqlite3.connect(AUTH/'sessions.db') as con:con.execute('CREATE TABLE panel_sessions(token_hash TEXT PRIMARY KEY,expires_at REAL NOT NULL)')
@@ -354,15 +355,56 @@ def activate(materials,checked):
     print('Code-only rollback: python3 '+str(Path(__file__).resolve())+' --rollback '+str(backup))
 
 
+def prepare_directories():
+    for directory,mode in ((STATE,0o700),(CODE,0o700),(SITE,0o755),(SITE/'server',0o755),(SITE/'public',0o755),(AUTH,0o700)):
+        directory.mkdir(mode=mode)
+        directory.chmod(mode)  # Explicitly apply reviewed access after restrictive umask.
+
+
+def archive_incomplete_preparation():
+    # Only the observed pre-activation failure is eligible. Never remove files,
+    # restore databases, stop units or reuse an identity that ran a live service.
+    account=pwd.getpwnam('vpn-panel')
+    if account.pw_dir!='/nonexistent' or account.pw_shell!='/usr/sbin/nologin':
+        raise RuntimeError('Unexpected prepared API identity')
+    forbidden=(STATE/'activation.json',STATE/'operations',AUTH/'sessions.db',
+        Path('/etc/vpn-manager-live.env'),Path('/etc/vpn-manager-live-bridge.env'),
+        Path('/root/vpn-manager-live-login-code'))
+    if any(path.exists() for path in forbidden) or any(AUTH.iterdir()):
+        raise RuntimeError('Preparation progressed beyond the reviewed recovery point')
+    for path in (STATE,CODE,SITE,AUTH):
+        if not path.is_dir() or path.is_symlink():raise RuntimeError('Unexpected incomplete preparation path')
+        expected=account.pw_uid if path==AUTH else 0
+        if path.stat().st_uid!=expected:raise RuntimeError('Unexpected preparation ownership')
+    for unit in NEW:
+        if run('systemctl','show',unit,'-p','LoadState','--value',check=False)!='not-found':
+            raise RuntimeError('A live unit has been installed; recovery refused')
+    for process in Path('/proc').glob('[0-9]*'):
+        try:
+            if process.stat().st_uid==account.pw_uid:raise RuntimeError('Prepared API identity has a running process')
+        except (FileNotFoundError,ProcessLookupError):pass
+    base=json.loads((STATE/'baseline.json').read_text())
+    if len(base.get('clients',{}))!=59 or len(base.get('initial_expiry_hold',[]))!=5:
+        raise RuntimeError('Unexpected incomplete baseline')
+    archive=Path('/root/vpn-manager-backups')/('incomplete-preparation-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ'))
+    archive.mkdir(mode=0o700)
+    # A partial rename failure is safe: all data stays private and old APIs run.
+    for label,path in (('state',STATE),('code',CODE),('site',SITE),('auth',AUTH)):
+        path.rename(archive/label)
+    print('INCOMPLETE_PREPARATION_ARCHIVED: '+str(archive))
+
+
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--activate-approved',action='store_true');parser.add_argument('--rollback',type=Path)
+    parser.add_argument('--resume-preparation-approved',action='store_true')
     args=parser.parse_args()
     if os.geteuid()!=0:raise SystemExit('Root required')
     os.umask(0o077)
     os.environ['NO_PROXY']='127.0.0.1,localhost'
     os.environ['no_proxy']='127.0.0.1,localhost'
     if args.rollback:return rollback(args.rollback)
-    admin=preflight();materials=materialize()
+    if args.resume_preparation_approved and not args.activate_approved:raise RuntimeError('Recovery requires --activate-approved')
+    admin=preflight(resume=args.resume_preparation_approved);materials=materialize()
     with tempfile.TemporaryDirectory(prefix='vpn-live-source-') as temp:
         source=Path(temp)
         for path,data in materials.items():
@@ -374,6 +416,7 @@ def main():
         if not args.activate_approved:
             print('LIVE_PREFLIGHT_READY; original_clients=59; initial_expiry_holds='+str(len(base['initial_expiry_hold']))+'; no activation performed')
             return
+        if args.resume_preparation_approved:archive_incomplete_preparation()
         activate(materials,admin)
 
 
