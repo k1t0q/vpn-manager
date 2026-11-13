@@ -85,7 +85,7 @@ def main():
         path = target(source)
         if path.is_symlink(): raise SystemExit('Symlink target rejected')
         if old is None:
-            if path.exists(): raise SystemExit('New target already exists: '+source)
+            if path.exists() and blob(path.read_bytes()) != new: raise SystemExit('New target differs: '+source)
         elif not path.exists() or blob(path.read_bytes()) != old:
             raise SystemExit('Installed source differs; review first: '+source)
         with urlopen('https://raw.githubusercontent.com/k1t0q/vpn-manager/'+RELEASE+'/'+source, timeout=30) as response: data = response.read()
@@ -94,7 +94,7 @@ def main():
         materials[source] = data
     unit = Path('/etc/systemd/system/vpn-manager-push.service')
     timer = Path('/etc/systemd/system/vpn-manager-push.timer')
-    if unit.exists() or timer.exists(): raise SystemExit('Push service already installed; inspect first')
+    if unit.is_symlink() or timer.is_symlink(): raise SystemExit('Symlink service rejected')
     backup = Path('/root/vpn-manager-backups')/('web-push-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ'))
     backup.mkdir(mode=0o700)
     manifest = []
@@ -113,6 +113,14 @@ def main():
     bridge = run('systemctl','show','vpn-manager-live-bridge.service','-p','MainPID','--value')
     # Add only the push dependency; no upgrade of the existing Flask/API stack.
     run(PYTHON,'-m','pip','install','pywebpush>=2.1,<3',timeout=240)
+    # pip ran under the private backup umask; package code must remain readable
+    # by vpn-panel. This touches only root-owned library files, never credentials.
+    libraries = Path(run(PYTHON,'-c','import sysconfig;print(sysconfig.get_paths()["purelib"])'))
+    for directory, folders, filenames in os.walk(libraries, followlinks=False):
+        for library in [Path(directory)]+[Path(directory)/name for name in filenames]:
+            if library.is_symlink() or library.stat().st_uid != 0: continue
+            library.chmod((library.stat().st_mode & 0o777) | (0o555 if library.is_dir() else 0o444))
+    run('runuser','-u','vpn-panel','--',PYTHON,'-c','import cryptography.hazmat.primitives.serialization;import pywebpush')
     account = pwd.getpwnam('vpn-panel')
     KEY.parent.mkdir(mode=0o750,exist_ok=True); os.chown(KEY.parent,0,account.pw_gid)
     if not KEY.exists():
@@ -155,12 +163,16 @@ Unit=vpn-manager-push.service
 [Install]
 WantedBy=timers.target
 '''
+    for path, expected in [(unit, service), (timer, timer_text)]:
+        if path.exists() and path.read_text() != expected: raise SystemExit('Installed timer source differs')
     run('systemctl','stop','vpn-manager-live-api.service')
+    phase = 'install-api'
     try:
         for source, old, new in FILES: write(target(source),materials[source])
         write(unit,service.encode()); write(timer,timer_text.encode())
         run('systemctl','daemon-reload')
         run('systemctl','start','vpn-manager-live-api.service')
+        phase = 'api-login-health'
         env = dict(line.split('=',1) for line in Path('/etc/vpn-manager-live.env').read_text().splitlines() if '=' in line)
         for _ in range(30):
             try:
@@ -169,12 +181,14 @@ WantedBy=timers.target
                 break
             except OSError: time.sleep(1)
         else: raise RuntimeError('API login health failed')
+        phase = 'push-key-health'
         headers = {'Authorization':'Bearer '+token}
         with urlopen(Request('http://127.0.0.1:5056/api/push/key',headers=headers),timeout=5) as response: result = json.load(response)
         assert result['ok'] and len(result['public_key']) == 87
         with urlopen('http://127.0.0.1:5056/health',timeout=5) as response: health = json.load(response)
         assert health['notification_delivery']=='web-push' and health['scheduler_ok']
         with urlopen(Request('http://127.0.0.1:5056/auth/logout',data=b'{}',headers=dict(headers,**{'Content-Type':'application/json'})),timeout=5): pass
+        phase = 'push-worker-start'
         run('systemctl','start','vpn-manager-push.service',timeout=200)
         run('systemctl','enable','--now','vpn-manager-push.timer')
         assert run('systemctl','is-active','vpn-manager-push.timer') == 'active'
@@ -183,8 +197,9 @@ WantedBy=timers.target
         assert run('systemctl','show','xray.service','-p','MainPID','--value') == xray
         assert run('systemctl','show','vpn-manager-live-bridge.service','-p','MainPID','--value') == bridge
         assert b'next_tick=time.monotonic()+86400' in Path('/usr/local/libexec/vpn-manager-production/awg_production_server.py').read_bytes()
-    except Exception:
+    except Exception as error:
         rollback(backup)
+        print(json.dumps(dict(failed_phase=phase,error_type=type(error).__name__,backup=str(backup))))
         raise SystemExit('Push update rolled back to previous API code. Inspect private backup.') from None
     report = dict(ok=True,version='1.75',push_timer='active',auto_expiry_interval=86400,vpn_unchanged=True,backup=str(backup),device_confirmation_required=True)
     (ROOT/'web-push-release.json').write_text(json.dumps(dict(report,release=RELEASE)))
