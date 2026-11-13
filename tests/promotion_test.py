@@ -15,6 +15,19 @@ from staging_api import create_app
 
 
 class PromotionTests(unittest.TestCase):
+    def test_profile_label_passes_proxy_without_exposing_profile_secrets(self):
+        with tempfile.TemporaryDirectory() as folder:
+            db=Path(folder)/'sessions.db';sqlite3.connect(db).close()
+            app=create_app(dict(TESTING=True,DB_PATH=str(db),ADMIN_CODE='test-code',AWG_TOKEN='bridge-token',MANAGED_AWG=True))
+            client=app.test_client();token=client.post('/auth/login',json={'code':'test-code'}).json['access_token']
+            response=Mock(ok=True);response.json.return_value={'clients':[dict(id='legacy-id',client_id=7,name='Customer',profile_name='CAESAR BOT #42',private_key='DO_NOT_EXPOSE',preshared_key='DO_NOT_EXPOSE')]}
+            with patch('staging_api.requests.request',return_value=response):
+                result=client.get('/api/wg/clients',headers={'Authorization':'Bearer '+token})
+            self.assertEqual(result.status_code,200)
+            self.assertEqual(result.json['clients'][0]['profile_name'],'CAESAR BOT #42')
+            self.assertEqual(result.json['clients'][0]['client_id'],7)
+            self.assertNotIn('DO_NOT_EXPOSE',result.get_data(as_text=True))
+
     def test_live_origin_inherits_exact_nested_existing_tls_policy(self):
         from resume import inherit_tls
         tls=' tls {\n  issuer acme {\n   email test@example.test\n  }\n }\n'
