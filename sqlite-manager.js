@@ -530,7 +530,7 @@ for(const [mobile,desktop] of [['mobileReload','reload'],['mobileExport','export
 }
 const mobileActions=$('mobileHeaderActions');
 if(mobileActions){
- const syncMobileActions=()=>{mobileActions.hidden=$('workspace').classList.contains('m-hide')};
+ const syncMobileActions=()=>{const hidden=$('workspace').classList.contains('m-hide');mobileActions.hidden=hidden;$('desktopHeaderActions').hidden=hidden};
  new MutationObserver(syncMobileActions).observe($('workspace'),{attributes:true,attributeFilter:['class']});
  syncMobileActions();
 }
