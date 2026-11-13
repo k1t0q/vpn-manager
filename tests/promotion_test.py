@@ -15,6 +15,13 @@ from staging_api import create_app
 
 
 class PromotionTests(unittest.TestCase):
+    def test_live_origin_inherits_exact_nested_existing_tls_policy(self):
+        from resume import inherit_tls
+        tls=' tls {\n  issuer acme {\n   email test@example.test\n  }\n }\n'
+        text='https://example.test:8443 {\n'+tls+' handle {\n respond ok\n }\n}\n'
+        self.assertEqual(inherit_tls(text),tls)
+        with self.assertRaises(RuntimeError):inherit_tls(text+text)
+
     def test_restrictive_umask_keeps_state_private_but_allows_api_to_read_code(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder)
