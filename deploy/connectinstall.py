@@ -211,7 +211,15 @@ WantedBy=timers.target
   def canonical(route):
    names={}
    def walk(value):
-    if isinstance(value,dict):return {key:(names.setdefault(item,'group'+str(len(names))) if key=='group' and isinstance(item,str) else walk(item)) for key,item in value.items()}
+    if isinstance(value,dict):
+     out={}
+     for key,item in value.items():
+      if key=='hide' and value.get('handler')=='file_server':
+       # Caddy adds the source Caddyfile path to file_server.hide.
+       generated={str(backup/'Caddyfile'),str(trial),str(CADDY)}
+       out[key]=sorted(x for x in item if x not in generated)
+      else:out[key]=names.setdefault(item,'group'+str(len(names))) if key=='group' and isinstance(item,str) else walk(item)
+     return out
     if isinstance(value,list):return [walk(item) for item in value]
     return value
    return json.dumps(walk(route),sort_keys=True)
