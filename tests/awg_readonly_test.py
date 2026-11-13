@@ -22,9 +22,17 @@ class ReadonlyTests(unittest.TestCase):
  def test_maps_numeric_metadata_to_existing_legacy_link_without_writes(self):
   before={p:p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
   result=bridge.collect(self.db,self.profiles,lambda:({self.key},{self.key:'123'},{self.key:['45','67']}))
-  self.assertEqual(result,[dict(id='legacy-link',client_id=7,name='Test',address='10.0.0.7',enabled=True,latestHandshake=123,transferRx=45,transferTx=67)])
+  self.assertEqual(result,[dict(id='legacy-link',client_id=7,name='Test',profile_name='CAESAR BOT #7',address='10.0.0.7',enabled=True,latestHandshake=123,transferRx=45,transferTx=67)])
   self.assertNotIn(self.key,json.dumps(result));self.assertNotIn('must-never-leak',json.dumps(result))
   for path,data in before.items():self.assertEqual(path.read_bytes(),data)
+ def test_profile_label_is_independent_of_customer_rename(self):
+  with sqlite3.connect(self.db) as con:
+   con.execute('CREATE TABLE awg_profile_labels(client_id INTEGER PRIMARY KEY,label_number INTEGER UNIQUE NOT NULL)')
+   con.execute('INSERT INTO awg_profile_labels VALUES(7,42)')
+   con.execute("UPDATE clients SET name='New customer name' WHERE id=7")
+  result=bridge.collect(self.db,self.profiles,lambda:({self.key},{},{}))[0]
+  self.assertEqual(result['name'],'New customer name')
+  self.assertEqual(result['profile_name'],'CAESAR BOT #42')
  def test_missing_metadata_and_runtime_failure_are_errors_not_disabled_peers(self):
   (self.profiles/'7/metadata.json').unlink()
   with self.assertRaises(FileNotFoundError):bridge.collect(self.db,self.profiles,lambda:(set(),{},{}))
