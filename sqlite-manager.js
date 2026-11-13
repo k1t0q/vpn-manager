@@ -355,15 +355,27 @@ async function performClientAction(e){
 $('rows').addEventListener('click',handleClientAction);
 $('cards').addEventListener('click',handleClientAction);
 $('closeConnectLink').onclick=()=>{$('connectLinkDialog').close();$('connectLinkValue').value='';$('connectCodeValue').value=''};
-$('copyConnectLink').onclick=async()=>{
- try{await navigator.clipboard.writeText($('connectLinkValue').value);msg('Ссылка скопирована')}
- catch{$('connectLinkValue').select();msg('Нажмите на выделенную ссылку и выберите «Скопировать»')}
-};
+async function copyConnectField(buttonId,fieldId,successText){
+ const button=$(buttonId),field=$(fieldId),original=button.textContent;
+ if(button.disabled)return;
+ button.disabled=true;button.setAttribute('aria-busy','true');
+ let notice=$('connectCopyStatus');
+ if(!notice){notice=document.createElement('p');notice.id='connectCopyStatus';notice.setAttribute('role','status');notice.setAttribute('aria-live','polite');$('connectLinkDialog').appendChild(notice)}
+ notice.textContent='Копируем…';
+ try{
+  await navigator.clipboard.writeText(field.value);
+  button.textContent='✓ Скопировано';button.dataset.feedback='success';notice.textContent=successText;
+ }catch{
+  field.focus();field.select();button.textContent='Скопировать вручную';button.dataset.feedback='error';
+  notice.textContent='Автокопирование недоступно. Текст выделен — скопируйте его вручную.';
+ }finally{
+  button.removeAttribute('aria-busy');
+  setTimeout(()=>{button.textContent=original;delete button.dataset.feedback;button.disabled=false},2000);
+ }
+}
+$('copyConnectLink').onclick=()=>copyConnectField('copyConnectLink','connectLinkValue','Ссылка скопирована в буфер обмена.');
 $('connectLinkDialog').addEventListener('click',handleClientAction);
-$('copyConnectCode').onclick=async()=>{
- try{await navigator.clipboard.writeText($('connectCodeValue').value);msg('Код доступа скопирован')}
- catch{$('connectCodeValue').focus();$('connectCodeValue').select();msg('Выделенный код можно скопировать вручную')}
-};
+$('copyConnectCode').onclick=()=>copyConnectField('copyConnectCode','connectCodeValue','Код доступа скопирован в буфер обмена.');
 $('closeQr').onclick=()=>$('qrDialog').close();
 $('shareQr').onclick=async()=>{
  const dialog=$('qrDialog'),img=$('qrImage'),button=$('shareQr');
