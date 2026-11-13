@@ -180,12 +180,14 @@ class Subscriptions(PeerStore):
    if end<=now:
     key='expiry-'+hashlib.sha256(json.dumps([cid,row['end_date']]).encode()).hexdigest()
     self.change(cid,'expire',{},key,now);processed.append(cid)
-   elif end-now<=timedelta(days=3):
+   elif end-now<=timedelta(days=7):
     with self.locked():
      self._recover()
      with self.connect() as con:
       fresh=con.execute('SELECT * FROM clients WHERE id=?',(cid,)).fetchone()
       deadline=subscription_deadline(fresh['period'],fresh['end_date']) if fresh else None
-      if deadline is not None and now<deadline<=now+timedelta(days=3):
-       self._notify(con,fresh,('three_days',fresh['end_date']))
+      if deadline is not None and now<deadline<=now+timedelta(days=7):
+       delta=deadline-now
+       kind='one_day' if delta<=timedelta(days=1) else 'three_days' if delta<=timedelta(days=3) else 'seven_days'
+       self._notify(con,fresh,(kind,fresh['end_date']))
   return processed
