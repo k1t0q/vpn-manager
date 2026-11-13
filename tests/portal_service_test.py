@@ -16,7 +16,7 @@ class PortalTests(unittest.TestCase):
   self.entries={str(cid):dict(number=number,period='1m',start_date='2026-01-01',end_date='2099-01-01',enabled=True,sha256=hashlib.sha256(self.content).hexdigest()) for cid,number in [(900,30),(901,82)]}
   for cid in self.entries:(self.material/(cid+'.conf')).write_bytes(self.content+ (b'' if cid=='900' else b'#other'))
   self.entries['901']['sha256']=hashlib.sha256((self.material/'901.conf').read_bytes()).hexdigest()
-  self.save();self.config=dict(STATE=str(self.state),MATERIAL=str(self.material),ADMIN_TOKEN='a'*40,TESTING=True)
+  self.save();self.config=dict(STATE=str(self.state),MATERIAL=str(self.material),ADMIN_TOKEN='a'*40,TESTING=True,CLASH_IMPORT_ENABLED=True)
   self.app=create_app(self.config);self.client=self.app.test_client();self.admin={'X-Connect-Admin':'a'*40};self.count=0
  def save(self,offset=0):
   (self.material/'portal.json').write_text(json.dumps(dict(version=2,updated_at=time.time()+offset,clients=self.entries)))
@@ -102,5 +102,51 @@ class PortalTests(unittest.TestCase):
   self.assertEqual(self.post('download',pilot_parts).status_code,401)
   self.login(pilot);self.assertTrue(self.post('profile',pilot_parts).json['profile']['import_pilot'])
   self.entries['92']['enabled']=False;self.save();self.assertEqual(self.post('download',pilot_parts).status_code,403)
+
+class ClashPortalTests(PortalTests):
+ def setUp(self):
+  super().setUp()
+  from clash_export_test import CONF
+  self.entries['92']=dict(self.entries['900'],number=93,sha256=hashlib.sha256(CONF).hexdigest())
+  (self.material/'92.conf').write_bytes(CONF);self.save()
+ def ticket(self):
+  from urllib.parse import parse_qs
+  result,parts=self.login(self.issue(92).json)
+  response=self.post('clash-import',parts);self.assertEqual(response.status_code,200)
+  uri=urlsplit(response.json['url']);self.assertEqual(uri.scheme,'clashmi');self.assertEqual(uri.netloc,'install-config')
+  return parse_qs(uri.query)['url'][0],parts
+ def test_import_auth_pilot_only_and_limits(self):
+  a=self.issue(92).json;self.assertEqual(self.post('clash-import',self.parts(a)).status_code,401)
+  normal,parts=self.login();self.assertEqual(self.post('clash-import',parts).status_code,403)
+  url,parts=self.ticket();external=self.app.test_client()
+  self.assertEqual(external.head(url).status_code,200)
+  for _ in range(3):self.assertEqual(external.get(url).status_code,200)
+  self.assertEqual(external.get(url).status_code,404)
+  with sqlite3.connect(self.state/'links.db') as con:
+   self.assertNotIn(urlsplit(url).query.split('=')[1],str(con.execute('SELECT * FROM portal_imports').fetchall()))
+ def test_import_expires_revokes_and_rechecks_current_state(self):
+  for change in ('expires','logout','revoke','reset-code','rotate','disabled','removed','stale','changed'):
+   self.entries['92']['enabled']=True;self.save();self.issue(92,action='rotate')
+   url,parts=self.ticket();external=self.app.test_client()
+   if change=='expires':
+    with sqlite3.connect(self.state/'links.db') as con:con.execute('UPDATE portal_imports SET expires=0')
+   elif change=='logout':self.post('logout',parts)
+   elif change in ('revoke','reset-code','rotate'):self.issue(92,action=change)
+   elif change=='disabled':self.entries['92']['enabled']=False;self.save()
+   elif change=='removed':
+    entry=self.entries.pop('92');self.save()
+   elif change=='stale':self.save(-151)
+   else:
+    (self.material/'92.conf').write_bytes(b'corrupt')
+   self.assertNotEqual(external.get(url).status_code,200)
+   if change=='removed':self.entries['92']=entry
+ def test_feature_disabled_by_default(self):
+  config=dict(self.config);config.pop('CLASH_IMPORT_ENABLED')
+  app=create_app(config);self.assertFalse(app.config['CLASH_IMPORT_ENABLED'])
+ def test_unsupported_export_fails_without_modifying_original(self):
+  original=(self.material/'92.conf').read_bytes();bad=original.replace(b'MTU =',b'PostUp =')
+  (self.material/'92.conf').write_bytes(bad);self.entries['92']['sha256']=hashlib.sha256(bad).hexdigest();self.save()
+  result,parts=self.login(self.issue(92).json);self.assertEqual(self.post('clash-import',parts).status_code,503)
+  self.assertEqual(self.post('download',parts).data,bad);self.assertEqual((self.material/'92.conf').read_bytes(),bad)
 
 if __name__=='__main__':unittest.main()

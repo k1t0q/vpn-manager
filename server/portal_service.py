@@ -5,6 +5,8 @@ from pathlib import Path
 import hashlib, hmac, json, math, os, re, secrets, sqlite3, subprocess, time
 from cryptography.fernet import Fernet
 from flask import Flask, Response, jsonify, request, send_file
+from urllib.parse import urlencode
+from clash_export import convert
 
 ORIGIN='https://connect.caesarbot.ru:8444'
 MOSCOW=timezone(timedelta(hours=3))
@@ -15,7 +17,7 @@ def stamp(value):
 
 def create_app(config=None):
     app=Flask(__name__)
-    app.config.update(MAX_CONTENT_LENGTH=4096,STATE='/var/lib/vpn-manager-connect/state',MATERIAL='/var/lib/vpn-manager-connect/material',ADMIN_TOKEN=os.environ.get('CONNECT_ADMIN_TOKEN',''),ORIGIN=ORIGIN)
+    app.config.update(MAX_CONTENT_LENGTH=4096,STATE='/var/lib/vpn-manager-connect/state',MATERIAL='/var/lib/vpn-manager-connect/material',ADMIN_TOKEN=os.environ.get('CONNECT_ADMIN_TOKEN',''),ORIGIN=ORIGIN,CLASH_IMPORT_ENABLED=os.environ.get('CONNECT_CLASH_PILOT')=='1')
     if config:app.config.update(config)
     state=Path(app.config['STATE']);material=Path(app.config['MATERIAL'])
     cipher=Fernet((state/'link.key').read_bytes());rates=defaultdict(deque)
@@ -28,6 +30,7 @@ def create_app(config=None):
         con.execute('CREATE TABLE IF NOT EXISTS portal_codes(client_id INTEGER PRIMARY KEY,salt TEXT NOT NULL,code_hash TEXT NOT NULL,secret BLOB NOT NULL)')
         con.execute('CREATE TABLE IF NOT EXISTS portal_sessions(session_hash TEXT PRIMARY KEY,client_id INTEGER NOT NULL,handle TEXT NOT NULL,expires REAL NOT NULL)')
         con.execute('CREATE TABLE IF NOT EXISTS portal_attempts(bucket TEXT PRIMARY KEY,started REAL NOT NULL,failures INTEGER NOT NULL)')
+        con.execute('CREATE TABLE IF NOT EXISTS portal_imports(ticket_hash TEXT PRIMARY KEY,client_id INTEGER NOT NULL,handle TEXT NOT NULL,session_hash TEXT NOT NULL,profile_hash TEXT NOT NULL,expires REAL NOT NULL,uses INTEGER NOT NULL)')
         return con
     def snapshot():
         data=json.loads((material/'portal.json').read_text())
@@ -68,7 +71,7 @@ def create_app(config=None):
         lifetime=current.get('period')=='lifetime';end=None if lifetime else stamp(current.get('end_date'));start=stamp(current.get('start_date'))
         seconds=max(0,(end or 0)-time.time())
         progress=100 if lifetime else max(0,min(100,seconds/max(1,(end or 0)-(start or time.time()))*100))
-        return dict(label='CAESAR VPN #'+str(current['number']),period=current.get('period'),start_date=current.get('start_date'),end_date=None if lifetime else current.get('end_date'),days_left=None if lifetime else math.ceil(seconds/86400),remaining_seconds=None if lifetime else int(seconds),progress=round(progress,1),enabled=bool(current.get('enabled')),available=available(current),lifetime=lifetime,import_pilot=cid==92)
+        return dict(label='CAESAR VPN #'+str(current['number']),period=current.get('period'),start_date=current.get('start_date'),end_date=None if lifetime else current.get('end_date'),days_left=None if lifetime else math.ceil(seconds/86400),remaining_seconds=None if lifetime else int(seconds),progress=round(progress,1),enabled=bool(current.get('enabled')),available=available(current),lifetime=lifetime,import_pilot=cid==92 and app.config['CLASH_IMPORT_ENABLED'])
     @app.after_request
     def headers(response):
         response.headers.update({'Cache-Control':'no-store, private','Pragma':'no-cache','X-Robots-Tag':'noindex, nofollow, noarchive, noimageindex','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"})
@@ -178,6 +181,41 @@ def create_app(config=None):
             result=subprocess.run(['/usr/bin/qrencode','-t','SVG','-o','-'],input=contents,capture_output=True,timeout=10,check=True)
             return Response(result.stdout,content_type='image/svg+xml')
         return Response(contents,content_type='application/octet-stream',headers={'Content-Disposition':'attachment; filename="CAESAR-VPN-'+str(current['number'])+'.conf"'})
+    @app.post('/api/clash-import')
+    def clash_import():
+        row,current=authorized_profile()
+        if not row or not current:return failure()
+        if not app.config['CLASH_IMPORT_ENABLED'] or row['client_id']!=92:return failure('Импорт проходит тестирование.',403)
+        if not available(current):return failure('Доступ выключен или подписка истекла.',403)
+        path=material/'92.conf'
+        if path.is_symlink():return failure(status=404)
+        contents=path.read_bytes()
+        if hashlib.sha256(contents).hexdigest()!=current['sha256']:raise ValueError('Material changed')
+        convert(contents,info(current)['label'])
+        ticket=secrets.token_urlsafe(32);now=time.time()
+        with db() as con:
+            con.execute('DELETE FROM portal_imports WHERE expires<? OR client_id=?',(now,92))
+            con.execute('INSERT INTO portal_imports VALUES(?,?,?,?,?,?,0)',(hashlib.sha256(ticket.encode()).hexdigest(),92,row['handle'],hashlib.sha256(request.cookies['vpn_portal'].encode()).hexdigest(),current['sha256'],now+120))
+        url=app.config['ORIGIN']+'/api/clash-config?ticket='+ticket
+        return jsonify(ok=True,expires_in=120,url='clashmi://install-config?'+urlencode(dict(url=url,name=info(current)['label'],overwrite='no')))
+    @app.route('/api/clash-config',methods=['GET','HEAD'])
+    def clash_config():
+        ticket=request.args.get('ticket','')
+        if not re.fullmatch(r'[A-Za-z0-9_-]{43}',ticket):return failure(status=404)
+        now=time.time();digest=hashlib.sha256(ticket.encode()).hexdigest()
+        with db() as con:
+            con.execute('BEGIN IMMEDIATE')
+            saved=con.execute('SELECT i.* FROM portal_imports i JOIN links l ON l.client_id=i.client_id AND l.handle=i.handle JOIN portal_sessions s ON s.session_hash=i.session_hash AND s.client_id=i.client_id AND s.handle=i.handle WHERE i.ticket_hash=? AND l.active=1 AND s.expires>? AND i.expires>? AND i.uses<3',(digest,now,now)).fetchone()
+            if not app.config['CLASH_IMPORT_ENABLED'] or not saved or saved['client_id']!=92:return failure(status=404)
+            current=snapshot().get(str(saved['client_id']))
+            if not available(current) or current['sha256']!=saved['profile_hash']:return failure(status=404)
+            path=material/'92.conf'
+            if path.is_symlink():return failure(status=404)
+            contents=path.read_bytes()
+            if hashlib.sha256(contents).hexdigest()!=saved['profile_hash']:raise ValueError('Material changed')
+            result=convert(contents,info(current)['label'])
+            if request.method=='GET':con.execute('UPDATE portal_imports SET uses=uses+1 WHERE ticket_hash=?',(digest,))
+        return Response(result,content_type='text/yaml; charset=utf-8',headers={'Content-Disposition':'attachment; filename="CAESAR-VPN-test.yaml"'})
     return app
 
 if __name__!='__main__' and os.environ.get('CONNECT_RUN')=='1':app=create_app()
