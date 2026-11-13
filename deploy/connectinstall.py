@@ -200,9 +200,6 @@ WantedBy=timers.target
         header_up X-Connect-IP {remote_host}
     }
 }
-http://connect.caesarbot.ru:80 {
-    respond "Use your personal HTTPS link" 404
-}
 '''
   write(SNIPPET,snippet.encode(),0o644)
   original=(backup/'Caddyfile').read_bytes();before=adapt(backup/'Caddyfile')
