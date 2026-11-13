@@ -13,7 +13,7 @@ PYTHON = SITE/'venv/bin/python'
 FILES = [
  ('server/production_app.py', '87f83cff45f7970b7eedb477c0bd1ca4961a4f67', '0543ad2fa1abf6c36c3f1ac865f75cc51cad5fad'),
  ('server/staging_api.py', 'eacf75a2cc2c64d0d7ca2aca3b163baa16f1eebf', 'a0860b04bed4d5b71402d643e0f8104a1e4c5cd3'),
- ('server/requirements.txt', '285b1b609ff6f58d60de59bd43f2895e3e559764', 'f739462d4fb3c90dd94e6b9800346e8da3b224b1'),
+ ('server/requirements.txt', None, 'f739462d4fb3c90dd94e6b9800346e8da3b224b1'),
  ('server/web_push.py', None, '98756d945bcaf73d0297d3f6410bfa441048ac69'),
  ('index.html', '89d8bf7bdf6d28bf20197b91aca7fd283bbf1d4e', 'bdc194d3455df250f2389100283bb6876be437a0'),
  ('sqlite-manager.js', '7738a0cf733bd34078852a89d046c5eadaa91bac', '57bc8665f184855eaae438289d153f70550bb308'),
