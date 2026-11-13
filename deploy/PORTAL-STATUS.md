@@ -1,36 +1,73 @@
-# Client portal v1.79 — prepared, not deployed
+# Client portal v1.79 — deployed and server-verified
 
-Updated 14 November 2026 (Moscow). Production remains v1.78 until a successful guarded activation is verified.
+Date: 14 November 2026 (Moscow). VPS AdminVPS 185.23.239.142.
+Manager: https://185-23-239-142.sslip.io:8444/panel-live/
+Portal origin: https://connect.caesarbot.ru:8444/
 
-Owner requested personal links and individual codes for all current and future managed clients, subscription dates/days/progress, unchanged configuration download, QR, Android/PC application links, and removal of delivery buttons while retaining historical records.
+## Delivered
 
-Prepared source: 2c623be3bb11006979676b714e025ecb0bcc8ca3. Installer: deploy/portalinstall.py (latest branch revision). No production VPN, client DB, profiles, keys, or Caddy changes have been made for this portal rollout.
+- Personal link and individual 12-character random access code for all 58 current, non-archived managed clients, including existing disposable test client ID 92.
+- Manager button “Личный кабинет” opens link/code fields with separate copy controls. Explicit code reset, link reissue and revoke are available inside that dialog.
+- “Отметить передачу”/“Передан” action buttons removed. Existing delivery timestamps/history remain untouched.
+- Generic page reveals no client identity, subscription details, configuration or QR before authentication.
+- After code entry: CAESAR VPN #N, matching the manager's existing CAESAR BOT #N, subscription end date, remaining days and remaining-time progress. Lifetime displays infinity without an end date.
+- Three main controls: download unchanged .conf, obtain QR from the same configuration payload, and transfer the profile file through supported native sharing. Unsupported browsers explicitly explain why file transfer is unavailable.
+- Official iOS DefaultVPN, Android AmneziaWG and Windows AmneziaWG download links. Responsive desktop/mobile layout.
+- Renewals preserve the link and access code; current subscription fields update from the existing database. Newly created managed profiles appear on the periodic snapshot, normally within one minute. No VPN reprovisioning is involved.
 
-Eight new local tests pass: client separation, mandatory code, encrypted credentials, stable idempotency/restart/renewal, code reset/revocation/session invalidation, persistent login throttling, disabled/expired/trial/lifetime subscriptions and progress, exact config bytes and QR input, stale/corrupt snapshot rejection, Origin/security headers, and archived/unmapped/symlink profile exclusion. Existing pilot service is preserved as a separate module. JavaScript syntax checks pass. GitHub Actions must pass before activation.
+## Architecture and security
 
-Architecture:
-- portal_service.py runs as existing isolated vpn-connect UID, no VPN control token or access to original profiles/main DB.
-- A root snapshot reader queries only fixed loopback GET /api/wg/clients for the same labels shown in the manager; no proxy inheritance. It reads client SQLite in mode=ro and copies unchanged profile bytes into the existing protected material directory. The public service never receives this root credential.
-- Missing/mismatched labels fail closed rather than assigning an incorrect CAESAR number. Snapshot age above 150 seconds blocks access.
-- New tables exist only in the separate encrypted link database; no working client DB migration.
-- Codes are 12 random characters, PBKDF2 checked, recoverable copy encrypted with the existing separately stored key. Wrong-code rate limits persist across restart.
-- Secure HttpOnly SameSite=Strict session cookies expire in 12 hours; session scope includes client and link handle. Reset code, revoke and rotate invalidate relevant sessions.
-- Expired/disabled clients can inspect subscription status after login, but config/QR delivery is blocked.
-- Account name is CAESAR VPN #N with N from the existing manager label. No names, dates, secrets or QR appear before authentication.
-- New client profiles appear on the next periodic snapshot; link/code issuance is idempotent and never provisions a VPN peer.
-- Three main controls: download .conf, obtain QR, transfer file to an application through supported native file sharing. The last is not automatic app launching or VPN activation; unsupported browsers receive an explicit explanation.
-- Links for iOS DefaultVPN, Android AmneziaWG and Windows official releases are included. Layout adapts for desktop/mobile.
-- Manager: personal-account dialog, separate copy link/code controls, explicit reset/reissue/revoke controls. Delivery buttons removed; previous delivery records untouched.
+Public backend runs as existing vpn-connect UID on loopback 5057. It has no AWG management token and no access to original profiles or the working client database.
 
-Deployment gates:
-1. Reauthenticate AdminVPS; previous cloud-browser console session expired and returned Unauthorized. Opera Connector also reports Browser not connected.
-2. Run read-only deploy/portalaudit.py to verify actual metadata/label mechanism and server identity.
-3. Review/run pinned portalinstall.py only after CI success. It backs up current client SQLite using SQLite backup API (WAL aware), existing link DB/key, code/drop-ins, and records profile/config/interface/Xray/bridge invariants.
-4. Start the new snapshot and isolated portal backend; test code gate, exact .conf bytes and QR using existing disposable pilot client ID 92.
-5. Publish new manager controls only after those checks. Verify original client/history rows, all profile digests, AWG config/runtime peers/interface index, Xray/root bridge PIDs unchanged.
-6. No AWG/Xray restart, client reprovisioning, Caddy rerouting or existing profile changes.
+Root snapshot reader opens client SQLite with mode=ro and reads the existing awg_profile_labels(client_id,label_number) registry inside the same read transaction. This was verified on the actual VPS. It does not use API/VPN credentials, assign new labels, write client SQLite, or modify original metadata/configuration. Migrated wg_client_id values are legacy UUIDs; they are never treated as filesystem paths. Numeric local client ID is checked against metadata.client_id.
 
-Rollback command after activation: python3 /root/vpn-portalinstall.py --rollback (use the actual downloaded pinned path).
-Rollback stops portal delivery and its snapshot timer, restores previous code/drop-ins/UI, and preserves current client DB and profiles. It intentionally does not reopen the old code-less pilot endpoint or restore an old client DB.
+Only non-archived, exactly mapped existing profiles are copied to the already protected material directory. Public access fails closed if the snapshot is stale beyond 150 seconds or file hashes mismatch. Expired/disabled clients can inspect subscription status after login but cannot obtain config/QR.
 
-Remaining: server audit/activation and real device UI/import test. Automatic DefaultVPN deep-link import remains unsupported/unconfirmed; native file sharing is an honest optional manual-import aid, not a substitute claim.
+Codes are PBKDF2 checked, with recoverable copies encrypted in the separate link database under the existing separately stored encryption key. Link tokens remain in URL fragments. Secure HttpOnly SameSite=Strict sessions expire after 12 hours. Code reset, revoke and reissue invalidate affected sessions. Persistent wrong-code throttling survives restart. No analytics, public logs, search indexing or configuration payloads in reports.
+
+No schema migration of the working client DB. New code/session tables exist only in the separate link database.
+
+## Verified results
+
+GitHub Actions passed for deployed release and installer:
+- Source 4f9e86ce4377fb42ae0c5c3023bbe6bee5b6351f, run 43513888315.
+- Installer 0cdafb18fc3ed96f4fdb4c3e3baca949b8477c66, run 43513937699.
+- Eight new local security, subscription and snapshot tests passed.
+
+Server installer reported:
+- 58 personal accounts and unique link handles, codes available.
+- Unauthenticated config request rejected with 401.
+- HTTPS login with code succeeds for the disposable pilot.
+- Downloaded .conf bytes exactly equal the existing pilot client.conf.
+- QR endpoint succeeds.
+- All pre-existing client.conf hashes unchanged.
+- Working clients and client_history rows equal the WAL-safe backup.
+- AWG config, runtime peer list and interface index unchanged.
+- Xray and root bridge PIDs unchanged; neither AWG nor Xray restarted.
+
+Additional deploy/portalverify.py check passed through the actual authorized manager API:
+- all-client portal capability and codes available to administrator;
+- legacy client's public number matches the existing registry;
+- 58 accounts reported;
+- public backend and periodic snapshot timer active;
+- observed snapshot age 22 seconds.
+
+Cloud browser displayed portal login with Android/PC/iOS links and manager v1.79 over trusted HTTPS. A real physical device login/import test remains pending; no automatic DefaultVPN launching or VPN activation is claimed.
+
+## Backup and rollback
+
+Private backup: /root/vpn-manager-backups/portal-20261113T214612Z.
+Contains WAL-aware client SQLite backup, link DB before/after activation, encryption key and previous code/drop-ins. No private values are included here.
+
+Code rollback:
+python3 /root/vpn-portalinstall.py --rollback
+
+It stops public portal delivery and its snapshot timer, restores previous code/UI/drop-ins and preserves the CURRENT client DB and VPN profiles. It intentionally does not reopen the earlier code-less pilot endpoint and never restores an old client DB over live data.
+
+The first guarded attempt stopped before public activation because migrated UUID links were incorrectly excluded. Old UI was restored, no VPN/client data changed. The reader and its regression test were corrected to use verified numeric local IDs, after which activation passed. No original UUID links were changed.
+
+## Remaining limitation
+
+“Передать в приложение” uses the operating system's supported file-sharing chooser. It is a manual import aid. Direct browser → DefaultVPN import of a custom AmneziaWG profile remains unsupported/unconfirmed; the site cannot enable the device VPN on its own. Existing .conf and QR methods remain available.
+
+Recommended owner smoke test: refresh manager → client → Личный кабинет → copy link and code → open the complete link on phone or PC → enter code → verify displayed number/subscription → download .conf or scan QR → import/connect in the chosen application. Do not publish personal URLs, codes, QR or configs.
