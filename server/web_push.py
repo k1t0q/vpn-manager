@@ -100,7 +100,7 @@ def send(subscription, message, key_path, sender=None):
     session.post = lambda *a, **kw: original(*a, **dict(kw, allow_redirects=False))
     return sender(subscription_info=subscription, data=json.dumps(message, ensure_ascii=False),
                   vapid_private_key=key_path,
-                  vapid_claims={'sub': 'https://185-23-239-142.sslip.io:8444/panel-live/'},
+                  vapid_claims={'sub': 'https://caesarbot.ru'},
                   ttl=3600, timeout=10, requests_session=session)
 
 
