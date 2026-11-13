@@ -62,6 +62,24 @@ def backup_sqlite(source, target):
     os.chmod(target,0o600)
 
 
+def freeze_runtime():
+    # Copy the reviewed installed environment. Do not share writable runtime or
+    # require the new API identity to traverse a possibly private staging venv.
+    source=Path('/opt/vpn-manager-stage-venv');target=SITE/'venv'
+    if source.is_symlink() or source.stat().st_uid!=0 or source.stat().st_mode & 0o022:
+        raise RuntimeError('Installed staging runtime is not root-frozen')
+    for path in source.rglob('*'):
+        stat=path.lstat()
+        if stat.st_uid!=0 or (not path.is_symlink() and stat.st_mode & 0o022):
+            raise RuntimeError('An installed runtime file is not root-frozen')
+    shutil.copytree(source,target,symlinks=True)
+    target.chmod(0o755)
+    for path in target.rglob('*'):
+        if path.is_symlink():continue
+        path.chmod(0o755 if path.is_dir() or path.stat().st_mode & 0o111 else 0o644)
+    run('runuser','-u','vpn-panel','--',str(target/'bin/python'),'-c','import flask, requests, gunicorn')
+
+
 def listeners(ports):
     selected=[]
     for line in run('ss','-ltnpH').splitlines():
@@ -253,6 +271,7 @@ def activate(materials,admin):
     write(STATE/'baseline.json',json.dumps(base).encode())
     run('useradd','--system','--no-create-home','--home-dir','/nonexistent','--shell','/usr/sbin/nologin','vpn-panel')
     account=pwd.getpwnam('vpn-panel');os.chown(AUTH,account.pw_uid,account.pw_gid)
+    freeze_runtime()
     with sqlite3.connect(AUTH/'sessions.db') as con:con.execute('CREATE TABLE panel_sessions(token_hash TEXT PRIMARY KEY,expires_at REAL NOT NULL)')
     os.chmod(AUTH/'sessions.db',0o600);os.chown(AUTH/'sessions.db',account.pw_uid,account.pw_gid)
     token=secrets.token_urlsafe(48)
@@ -261,7 +280,7 @@ def activate(materials,admin):
     write('/etc/vpn-manager-live.env',env.encode())
     definitions={
         NEW[0]:unit('VPN MANAGER frozen production peer controller','/usr/bin/python3 '+str(CODE/'awg_production_server.py'),env='/etc/vpn-manager-live-bridge.env',rw=str(STATE)+' '+str(DB.parent)+' '+str(PROFILES)+' '+str(CONFIG.parent),after='network.target awg-quick@awg-test.service'),
-        NEW[1]:unit('VPN MANAGER pinned production API','/opt/vpn-manager-stage-venv/bin/gunicorn --workers 1 --bind 127.0.0.1:5056 production_app:app',user='vpn-panel',env='/etc/vpn-manager-live.env',rw=str(AUTH),after='network.target '+NEW[0]),
+        NEW[1]:unit('VPN MANAGER pinned production API',str(SITE/'venv/bin/python')+' -m gunicorn --workers 1 --bind 127.0.0.1:5056 production_app:app',user='vpn-panel',env='/etc/vpn-manager-live.env',rw=str(AUTH),after='network.target '+NEW[0]),
         NEW[2]:unit('VPN MANAGER read-only preview snapshot','/usr/bin/python3 '+str(CODE/'preview_snapshot.py'),env='/etc/vpn-manager-awg-readonly.env',rw=str(STAGE))}
     for name,text in definitions.items():write(Path('/etc/systemd/system',name),text.encode(),0o644)
     for old in OLD:
