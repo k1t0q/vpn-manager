@@ -15,6 +15,7 @@ class SnapshotTests(unittest.TestCase):
     con.execute('CREATE TABLE awg_profile_labels(client_id INTEGER PRIMARY KEY,label_number INTEGER NOT NULL UNIQUE)')
     con.executemany('INSERT INTO awg_profile_labels VALUES(?,?)',[(1,30),(2,31),(4,33)])
     for cid in range(1,5):con.execute('INSERT INTO clients VALUES(?,?,?,?,?)',(cid,str(cid),'1m','2026-01-01','2099-01-01'))
+    con.execute("UPDATE clients SET wg_client_id='legacy-uuid-fixture' WHERE id=1")
     con.execute("INSERT INTO awg_deleted_clients VALUES('2')")
    payload=b'[Interface]\nPrivateKey = test-fixture\n'
    for cid in range(1,5):

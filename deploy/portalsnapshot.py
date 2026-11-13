@@ -29,12 +29,15 @@ def build(db_path,profiles,labels,material,gid):
         rows=con.execute('SELECT id,wg_client_id,period,start_date,end_date FROM clients WHERE id NOT IN (SELECT client_id FROM awg_deleted_clients)').fetchall()
         for row in rows:
             cid=str(row['id']);peer=str(row['wg_client_id'] or '')
-            if not cid.isdigit() or not peer.isdigit() or peer!=cid or peer not in labels:continue
-            folder=profiles/peer;meta_path=folder/'metadata.json';profile=folder/'client.conf'
+            # wg_client_id retains a legacy UUID for migrated clients. It is
+            # never a filesystem path. The local numeric DB ID is explicitly
+            # verified against metadata.client_id before reading its profile.
+            if not cid.isdigit() or not peer or cid not in labels:continue
+            folder=profiles/cid;meta_path=folder/'metadata.json';profile=folder/'client.conf'
             if folder.is_symlink() or meta_path.is_symlink() or profile.is_symlink() or not profile.is_file():continue
             before=meta_path.read_bytes();meta=json.loads(before);data=profile.read_bytes()
             if meta_path.read_bytes()!=before or str(meta.get('client_id'))!=cid:continue
-            number=labels[peer]
+            number=labels[cid]
             if type(number) is not int or number<=0:raise ValueError('Invalid profile label')
             entry=dict(number=number,period=row['period'],start_date=row['start_date'],end_date=row['end_date'],enabled=meta.get('enabled') is not False,sha256=hashlib.sha256(data).hexdigest())
             target=material/(cid+'.conf')
