@@ -48,7 +48,7 @@ def main():
     m.run('runuser','-u','vpn-panel','--',str(m.SITE/'venv/bin/python'),'-c','import flask,requests,gunicorn')
     for old in m.OLD:
         folder=Path('/etc/systemd/system',old+'.d');folder.mkdir(exist_ok=True)
-        m.write(folder/'live-writer.conf',('[Unit]\\nConditionPathExists=!'+str(m.STATE/'activation.json')+'\\n').encode(),0o644)
+        m.write(folder/'live-writer.conf',('[Unit]\nConditionPathExists=!'+str(m.STATE/'activation.json')+'\n').encode(),0o644)
     function=next(node for node in ast.parse(source).body if isinstance(node,ast.FunctionDef) and node.name=='activate')
     body=ast.get_source_segment(source,function)
     start=body.index('    prepare_directories()')
