@@ -43,7 +43,7 @@ def main():
         if time.monotonic()>=next_tick:
             try:bridge.tick();server.scheduler_ok=True
             except Exception:server.scheduler_ok=False
-            next_tick=time.monotonic()+30
+            next_tick=time.monotonic()+86400
 
 
 if __name__=='__main__':main()
