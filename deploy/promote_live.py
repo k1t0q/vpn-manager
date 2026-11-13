@@ -138,6 +138,9 @@ def preflight():
         if 'awg-quick@' in dependencies or 'xray.service' in dependencies:raise RuntimeError('Legacy API pulls in VPN services')
         if Path('/etc/systemd/system',unit+'.d/live-writer.conf').exists():raise RuntimeError('Writer gate already exists')
     if listeners((5055,5056)):raise RuntimeError('New loopback ports already occupied')
+    if run('systemctl','is-enabled','awg-quick@awg-test.service')!='enabled':raise RuntimeError('AWG boot unit is not enabled; review without restarting VPN')
+    boot=run('systemctl','show','awg-quick@awg-test.service','-p','ExecStart','-p','RemainAfterExit')
+    if 'RemainAfterExit=yes' not in boot or not re.search(r'awg-quick\s+up\s+awg-test',boot):raise RuntimeError('Unexpected AWG boot command; no VPN service was started')
     check_other_writers()
     for folder in ('/etc/cron.d','/etc/cron.daily','/etc/cron.hourly','/var/spool/cron/crontabs'):
         for path in Path(folder).glob('*'):
@@ -183,7 +186,7 @@ def baseline(now):
         if folder.is_symlink() or any(p.is_symlink() for p in folder.rglob('*')):raise RuntimeError('Profile symlink requires review')
         if folder.stat().st_uid!=os.geteuid() or any(p.stat().st_uid!=os.geteuid() for p in folder.rglob('*')):raise RuntimeError('Review original profile ownership before promotion')
         meta=json.loads((folder/'metadata.json').read_text());key=meta['public_key'];address=meta['address']
-        if str(meta['client_id'])!=cid or key not in live or disk.get(key,{}).get('AllowedIPs')!=address+'/32' or meta.get('enabled') is False:raise RuntimeError('Original profile consistency failure')
+        if str(meta['client_id'])!=cid or key not in live or disk.get(key,{}).get('AllowedIPs')!=address+'/32' or meta.get('enabled') is False or meta.get('auto_disabled'):raise RuntimeError('Original profile consistency failure')
         if key in keys or address in addresses:raise RuntimeError('Duplicate original mapping')
         keys.add(key);addresses.add(address)
         clients[cid]=dict(public_key=key,address=address,peer_fields=disk[key])
