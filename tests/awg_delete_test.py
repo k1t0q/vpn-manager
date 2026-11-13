@@ -1,5 +1,9 @@
 import json
 import sqlite3
+import os
+import errno
+from pathlib import Path
+from unittest.mock import patch
 import unittest
 import awg_persistence_test as base
 from awg_delete import Deleter
@@ -45,6 +49,17 @@ class DeleteTests(unittest.TestCase):
   self.store.fault=lambda _:None
   self.assertTrue(self.store.delete(60,'delete-lost-00001')['deleted'])
   self.assertFalse(self.profile.exists());self.assert_preserved()
+ def test_separate_bind_mounts_do_not_require_cross_mount_rename(self):
+  replace=os.replace
+  def separated(source,target):
+   if Path(source).parent==self.profiles and self.store.state in Path(target).parents:
+    raise OSError(errno.EXDEV,'Cross-device link')
+   return replace(source,target)
+  with patch('os.replace',side_effect=separated):
+   result=self.store.delete(60,'delete-bindmount-001')
+  self.assertTrue(result['deleted']);self.assertFalse(self.profile.exists())
+  self.assertFalse(list(self.profiles.glob('.removed-*')))
+  self.assert_preserved()
  def test_protected_and_unavailable_fail_without_changes(self):
   with self.assertRaises(StateError):self.store.delete(1,'delete-protected-01')
   self.runtime.available=False
