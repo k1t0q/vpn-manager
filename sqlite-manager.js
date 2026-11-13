@@ -3,7 +3,7 @@
 const API=window.VPN_MANAGER_CONFIG.API_BASE;
 const $=id=>document.getElementById(id);
 const TOKEN_KEY='vpn_manager_sqlite_session_v1';
-let token=sessionStorage.getItem(TOKEN_KEY)||'',clients=[],wg=[],wgAvailable=false,capabilities={};
+let token=sessionStorage.getItem(TOKEN_KEY)||'',clients=[],wg=[],wgAvailable=false,capabilities={},connectPilot=null;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const msg=(t,bad=false)=>{$('status').textContent=t;$('status').className=bad?'m-error':'m-ok'};
 const iso=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')};
@@ -39,7 +39,7 @@ function wgDisplay(c,mobile=false){
 }
 
 async function call(path,opts={}){
- const mutation=['POST','PATCH'].includes(opts.method)&&(path.startsWith('/api/clients/')||path.startsWith('/api/wg/client/'));
+ const mutation=['POST','PATCH'].includes(opts.method)&&(path.startsWith('/api/clients/')||path.startsWith('/api/wg/client/')||path.startsWith('/api/connect/'));
  let pendingId='',requestKey='';
  if(mutation){
   const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([path,opts.body||''])));
@@ -114,6 +114,7 @@ function render(){
  +'<button data-act="delete" data-id="'+c.id+'" class="danger">Удалить</button>'
  +(c.referrer_id?'<button data-act="referral" data-id="'+c.id+'" class="secondary referral-action">Бонус рефералу</button>':'')
  +(capabilities.profile_delivery?'<button data-act="delivery" data-id="'+c.id+'" class="secondary referral-action">'+(c.delivered_at?'Передан ✓':'Отметить передачу')+'</button>':'')
+ +(Number(connectPilot?.client_id)===Number(c.id)?'<button data-act="connect-copy" data-id="'+c.id+'" class="secondary referral-action">Скопировать ссылку · тест</button><button data-act="connect-rotate" data-id="'+c.id+'" class="secondary">Перевыпустить ссылку</button><button data-act="connect-revoke" data-id="'+c.id+'" class="secondary">Отозвать ссылку</button>':'')
  +'</div>';
 };
  const remain=c=>c.period==='lifetime'?'∞':remaining(c)===null?'—':String(remaining(c));
@@ -132,8 +133,8 @@ function render(){
  $('referrer').value=current;
 }
 async function refresh(silent=false){
- const [a,b,caps]=await Promise.all([call('/api/clients'),call('/api/wg/clients').catch(e=>({clients:[],error:e.message})),call('/health').catch(()=>({}))]);
- capabilities=caps;
+ const [a,b,caps,pilot]=await Promise.all([call('/api/clients'),call('/api/wg/clients').catch(e=>({clients:[],error:e.message})),call('/health').catch(()=>({})),call('/api/connect/pilot').catch(()=>({}))]);
+ capabilities=caps;connectPilot=pilot.ok?pilot:null;
  let importer=$('importProfiles');
  if(!importer){importer=document.createElement('button');importer.id='importProfiles';importer.className='secondary';importer.textContent='Импорт профилей';$('exportCsv').insertAdjacentElement('afterend',importer);importer.onclick=importProfiles}
  importer.hidden=!capabilities.profile_import;
@@ -236,6 +237,19 @@ $('create').onsubmit=async e=>{
 async function handleClientAction(e){
  const btn=e.target.closest('button[data-act]');if(!btn)return;
  const id=Number(btn.dataset.id),c=clients.find(x=>Number(x.id)===id);if(!c)return;
+ if(btn.dataset.act.startsWith('connect-')){
+  const action=btn.dataset.act==='connect-copy'?'issue':btn.dataset.act==='connect-rotate'?'rotate':'revoke';
+  if(action==='rotate'&&!confirm('Перевыпустить ссылку? Старая ссылка перестанет работать. VPN-профиль сохранится.'))return;
+  if(action==='revoke'&&!confirm('Отозвать ссылку? Уже импортированный VPN продолжит работать.'))return;
+  btn.disabled=true;
+  try{
+   const result=await call('/api/connect/clients/'+id+'/link',{method:'POST',body:JSON.stringify({action})});
+   if(action==='revoke'){msg('Ссылка отозвана');return}
+   try{await navigator.clipboard.writeText(result.url);msg('Тестовая персональная ссылка скопирована')}
+   catch{$('connectLinkValue').value=result.url;$('connectLinkDialog').showModal();msg('Скопируйте ссылку в открывшемся окне')}
+  }catch(error){msg(error.message,true)}finally{btn.disabled=false}
+  return;
+ }
  if(btn.dataset.act==='delete'){
   if(!confirm('Удалить клиента «'+c.name+'»?\\n\\nУдаление привязанного VPN-профиля требует отдельной проверки на сервере.'))return;
   btn.disabled=true;
@@ -332,6 +346,11 @@ async function handleClientAction(e){
 }
 $('rows').addEventListener('click',handleClientAction);
 $('cards').addEventListener('click',handleClientAction);
+$('closeConnectLink').onclick=()=>{$('connectLinkDialog').close();$('connectLinkValue').value=''};
+$('copyConnectLink').onclick=async()=>{
+ try{await navigator.clipboard.writeText($('connectLinkValue').value);msg('Ссылка скопирована');$('closeConnectLink').click()}
+ catch{$('connectLinkValue').select();msg('Нажмите на выделенную ссылку и выберите «Скопировать»')}
+};
 $('closeQr').onclick=()=>$('qrDialog').close();
 $('shareQr').onclick=async()=>{
  const dialog=$('qrDialog'),img=$('qrImage'),button=$('shareQr');
@@ -513,6 +532,7 @@ setInterval(refreshWarnings,60000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshWarnings()});
 
 })();
+
 
 
 

@@ -126,7 +126,11 @@ def create_app(config=None):
  if app.config.get('WEB_PUSH'):
   from web_push import register as register_push
   register_push(app,authorized)
+ if app.config.get('CONNECT_PILOT'):
+  from connect_admin import register as register_connect
+  register_connect(app,authorized)
  return app
 app=create_app()
+
 
 
