@@ -235,6 +235,12 @@ $('create').onsubmit=async e=>{
  finally{if(submit)submit.disabled=false}
 };
 async function handleClientAction(e){
+ const button=e.target.closest('button[data-act]');if(!button||button.disabled||button.getAttribute('aria-busy')==='true')return;
+ button.setAttribute('aria-busy','true');button.disabled=true;
+ try{await performClientAction(e)}
+ finally{button.disabled=false;button.removeAttribute('aria-busy')}
+}
+async function performClientAction(e){
  const btn=e.target.closest('button[data-act]');if(!btn)return;
  const id=Number(btn.dataset.id),c=clients.find(x=>Number(x.id)===id);if(!c)return;
  if(btn.dataset.act.startsWith('connect-')){
