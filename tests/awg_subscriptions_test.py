@@ -72,6 +72,27 @@ class SubscriptionTests(unittest.TestCase):
    self.assertEqual(con.execute("SELECT count(*) FROM subscription_notifications WHERE event_type='expired'").fetchone()[0],1)
    self.assertEqual(con.execute("SELECT count(*) FROM client_history WHERE event_type='expired'").fetchone()[0],1)
   for cid in range(1,60):self.assertIn(self.keys[cid],self.runtime.keys)
+ def test_seven_three_one_notifications_once_per_deadline_and_renewal(self):
+  end=self.clock+timedelta(days=8)
+  self.change('edit',{'period':'trial','end_date':end.isoformat()})
+  self.store.tick(self.clock)
+  with self.store.connect() as con:
+   exists=con.execute("SELECT 1 FROM sqlite_master WHERE name='subscription_notifications'").fetchone()
+   self.assertFalse(exists)
+  for days,kind in [(7,'seven_days'),(3,'three_days'),(1,'one_day')]:
+   now=end-timedelta(days=days)
+   self.store.tick(now);self.store.tick(now+timedelta(seconds=20))
+   with self.store.connect() as con:
+    self.assertEqual(con.execute('SELECT count(*) FROM subscription_notifications WHERE event_type=?',(kind,)).fetchone()[0],1)
+  self.store.tick(end);self.store.tick(end+timedelta(seconds=1))
+  with self.store.connect() as con:
+   self.assertEqual(con.execute('SELECT count(*) FROM subscription_notifications').fetchone()[0],4)
+  self.assertTrue(self.meta()['auto_disabled'])
+  self.store.change(60,'extend',{'period':'trial'},'notice-renewal-0001',end)
+  self.store.tick(end)
+  with self.store.connect() as con:
+   self.assertEqual(con.execute("SELECT count(*) FROM subscription_notifications WHERE event_type='one_day'").fetchone()[0],2)
+  base.ProvisionTests.assert_originals(self,changed_metadata=('60',))
  def test_awg_unavailable_leaves_subscription_unchanged(self):
   before=self.row();self.runtime.available=False
   with self.assertRaises(StateError):self.change('extend',{'period':'1m'})
