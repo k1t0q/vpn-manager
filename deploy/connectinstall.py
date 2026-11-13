@@ -190,7 +190,7 @@ WantedBy=timers.target
   snippet='''https://connect.caesarbot.ru:8444 {
     tls {
         issuer acme {
-            ca https://acme-v02.api.letsencrypt.org/directory
+            dir https://acme-v02.api.letsencrypt.org/directory
             disable_tlsalpn_challenge
         }
     }
@@ -292,6 +292,7 @@ http://connect.caesarbot.ru:80 {
    assert live_db.execute('PRAGMA integrity_check').fetchone()[0]=='ok'
   request('http://127.0.0.1:5056/auth/logout',{},headers)
   assert b'v1.77' in request('https://185-23-239-142.sslip.io:8444/panel-live/')
+  backup_db(STATE/'state/links.db',backup/'links.db');shutil.copy2(STATE/'state/link.key',backup/'link.key')
   report=dict(ok=True,version='1.77',pilot_client_id=cid,client_name=state['client_data']['name'],page='https://connect.caesarbot.ru:8444/',https_verified=True,download_bytes_match=True,revoke_rotate_verified=True,stable_after_restart=True,original_profiles_unchanged=True,xray_and_awg_not_restarted=True,backup=str(backup),iphone_import_pending=True)
   state['phase']='complete';state['report']=report;save(state)
   print(json.dumps(report,indent=2))
