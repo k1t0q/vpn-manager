@@ -211,8 +211,15 @@ http://connect.caesarbot.ru:80 {
   after=adapt(trial)
   assert not (listeners(before)-listeners(after))
   assert all(address.endswith((':80',':8444')) for address in (listeners(after)-listeners(before)))
-  old_routes=[json.dumps(route,sort_keys=True) for server in before['apps']['http']['servers'].values() for route in server.get('routes',[])]
-  new_routes=[json.dumps(route,sort_keys=True) for server in after['apps']['http']['servers'].values() for route in server.get('routes',[])]
+  def canonical(route):
+   names={}
+   def walk(value):
+    if isinstance(value,dict):return {key:(names.setdefault(item,'group'+str(len(names))) if key=='group' and isinstance(item,str) else walk(item)) for key,item in value.items()}
+    if isinstance(value,list):return [walk(item) for item in value]
+    return value
+   return json.dumps(walk(route),sort_keys=True)
+  old_routes=[canonical(route) for server in before['apps']['http']['servers'].values() for route in server.get('routes',[])]
+  new_routes=[canonical(route) for server in after['apps']['http']['servers'].values() for route in server.get('routes',[])]
   assert all(route in new_routes for route in old_routes)
   run('caddy','validate','--config',trial,'--adapter','caddyfile')
   if sha(CADDY) not in {state['caddy_original'],state.get('caddy_installed')}:raise RuntimeError('Concurrent Caddy change')
@@ -250,22 +257,23 @@ http://connect.caesarbot.ru:80 {
   state['phase']='verify';save(state)
   def link(action,key):return json.loads(request('http://127.0.0.1:5056/api/connect/clients/'+str(cid)+'/link',dict(action=action),dict(headers,**{'Idempotency-Key':key})))
   from urllib.parse import urlsplit
-  first=link('issue','pilot-check-issue-0001')
+  verify_id='pilot-check-'+uuid.uuid4().hex
+  first=link('issue',verify_id+'-issue')
   def download(url):
    parts=urlsplit(url)
    return request('https://connect.caesarbot.ru:8444/api/download',dict(handle=parts.path[1:],token=parts.fragment),{'Origin':'https://connect.caesarbot.ru:8444'})
   assert download(first['url'])==(PROFILES/str(cid)/'client.conf').read_bytes()
-  link('revoke','pilot-check-revoke-0001')
+  link('revoke',verify_id+'-revoke')
   from urllib.error import HTTPError
   try:download(first['url'])
   except HTTPError as error:assert error.code==404
   else:raise RuntimeError('Revoked link accepted')
-  second=link('rotate','pilot-check-rotate-0001')
+  second=link('rotate',verify_id+'-rotate')
   assert second['url']!=first['url'];assert download(second['url'])==(PROFILES/str(cid)/'client.conf').read_bytes()
   run('systemctl','restart','vpn-manager-connect.service')
   for _ in range(20):
    try:
-    assert link('issue','pilot-check-stable-0001')['url']==second['url'];break
+    assert link('issue',verify_id+'-stable')['url']==second['url'];break
    except Exception:time.sleep(1)
   else:raise RuntimeError('Stable link after restart not verified')
   qr=request('http://127.0.0.1:5056/api/wg/client/'+str(cid)+'/qr',headers=headers)
