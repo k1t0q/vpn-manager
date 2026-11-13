@@ -33,3 +33,18 @@ def normalize(route):
 old=[r for v in a['apps']['http']['servers'].values() for r in v.get('routes',[])]
 new=[r for v in b['apps']['http']['servers'].values() for r in v.get('routes',[])]
 for i,r in enumerate(old):print('ROUTE '+str(i)+' preserved='+str(normalize(r) in [normalize(x) for x in new]))
+
+def changes(x,y,p=''):
+ if type(x)!=type(y): print('DIFF',p,str(x)[:180],str(y)[:180]);return
+ if isinstance(x,dict):
+  for k in sorted(set(x)|set(y)):
+   if k not in x or k not in y:print('KEY',p+'/'+k)
+   else:changes(x[k],y[k],p+'/'+k)
+ elif isinstance(x,list):
+  if len(x)!=len(y):print('LENGTH',p,len(x),len(y))
+  for i,(u,v) in enumerate(zip(x,y)):changes(u,v,p+'/'+str(i))
+ elif x!=y:print('VALUE',p,str(x)[:180],str(y)[:180])
+for r in old:
+ host=r.get('match')
+ matches=[v for v in new if v.get('match')==host]
+ if matches:changes(json.loads(normalize(r)),json.loads(normalize(matches[0])))
