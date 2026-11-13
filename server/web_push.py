@@ -174,6 +174,8 @@ def register(app, authorized):
     @authorized
     def push_unsubscribe():
         data = request.get_json(silent=True) or {}
+        if not isinstance(data, dict):
+            return jsonify(ok=False, error='Invalid request'), 400
         with connect(path) as con:
             con.execute('UPDATE push_devices SET active=0 WHERE id=?', (str(data.get('device_id', ''))[:64],))
         return jsonify(ok=True)
@@ -182,6 +184,8 @@ def register(app, authorized):
     @authorized
     def push_test():
         data = request.get_json(silent=True) or {}
+        if not isinstance(data, dict):
+            return jsonify(ok=False, error='Invalid request'), 400
         ident = str(data.get('device_id', ''))[:64]
         now = time.time()
         with connect(path) as con:
@@ -216,4 +220,7 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception:
+        raise SystemExit('Push cycle unavailable; retry on next timer run') from None
