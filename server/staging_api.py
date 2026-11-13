@@ -119,7 +119,7 @@ def create_app(config=None):
    try:
     peers=r.json()['clients']
     if not isinstance(peers,list):raise ValueError()
-    fields={'id','name','address','enabled','latestHandshakeAt','latestHandshake','latest_handshake_at','transferRx','transferTx'}
+    fields={'id','client_id','profile_name','name','address','enabled','latestHandshakeAt','latestHandshake','latest_handshake_at','transferRx','transferTx'}
     return jsonify(ok=True,clients=[{k:v for k,v in peer.items() if k in fields} for peer in peers])
    except (ValueError,KeyError,AttributeError,TypeError):return jsonify(ok=False,error='Unexpected AWG list format'),502
   return Response(r.content,status=r.status_code,content_type=r.headers.get('Content-Type','application/octet-stream'))
