@@ -71,3 +71,13 @@ The first guarded attempt stopped before public activation because migrated UUID
 “Передать в приложение” uses the operating system's supported file-sharing chooser. It is a manual import aid. Direct browser → DefaultVPN import of a custom AmneziaWG profile remains unsupported/unconfirmed; the site cannot enable the device VPN on its own. Existing .conf and QR methods remain available.
 
 Recommended owner smoke test: refresh manager → client → Личный кабинет → copy link and code → open the complete link on phone or PC → enter code → verify displayed number/subscription → download .conf or scan QR → import/connect in the chosen application. Do not publish personal URLs, codes, QR or configs.
+
+## Compact layout update — 14 November 2026
+
+Deployed static assets b45897cf23e6db5e6a2f894402f1fbad91fd6694 using deploy/portalcompact.py at 322f8318e3b9f023727114de0c9f07c87869c26e. GitHub Actions run 43515745479 passed; JavaScript syntax check passed. HTTPS HTML/CSS and browser appearance verified.
+
+Main block reduced from 790 to 520 px, smaller gaps/padding, simplified subscription display/progress, two primary action buttons side by side, compact application links, instructions remain collapsed.
+
+The native “Передать в приложение” file-sharing control was removed because it did not meet the owner's requested direct app import. This supersedes the earlier three-control description. Current controls are .conf download and QR. Credentials/subscription backend and all client data remain unchanged. No services restarted. Backup: /root/vpn-manager-backups/portal-compact-20261113T220823Z; files.json maps the three original assets saved as 0/1/2.
+
+Further research found an explicit raw WireGuard/AmneziaWG deep-import format in INCY's own documentation: https://github.com/INCY-DEV/incy-docs/blob/main/ru/dev-docs/deep-links.en.md (incy://import/{base64-conf}). It is a candidate for an owner-approved separate test, NOT an implemented or physically verified integration. No configurations have been sent to INCY, no application changed, no experimental button published. DefaultVPN direct import remains unconfirmed. A universal reliable browser check of arbitrary app installation must not be simulated with a timer.
