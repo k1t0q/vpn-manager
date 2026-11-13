@@ -4,10 +4,18 @@ import sys
 import tempfile
 import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'deploy'))
-from diagnose_promotion import file_info,runtime_info
+from diagnose_promotion import file_info,runtime_info,journal_summary
 
 
 class DiagnosticTests(unittest.TestCase):
+    def test_journal_report_excludes_exception_messages_and_secrets(self):
+        text=json.dumps({'MESSAGE':'  File "/private/app.py", line 42, in main\nPermissionError: Permission denied SECRET_TOKEN_VALUE'})
+        result=journal_summary(text)
+        self.assertEqual(result['frames'],[{'file':'app.py','line':42}])
+        self.assertEqual(result['exceptions'],['PermissionError'])
+        self.assertEqual(result['categories'],['permission_denied'])
+        self.assertNotIn('SECRET_TOKEN_VALUE',json.dumps(result))
+
     def test_report_uses_metadata_and_does_not_read_secret_file_contents(self):
         import os
         with tempfile.TemporaryDirectory() as folder:
