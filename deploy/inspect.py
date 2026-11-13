@@ -9,7 +9,7 @@ import traceback
 
 def main():
     path=Path('/root/promote-vpn-live.py')
-    if hashlib.sha256(path.read_bytes()).hexdigest()!='bc97d1fc7309b3156c75682b0d12d14618210f71fb1809020b5bbee4bc936676':
+    if hashlib.sha256(path.read_bytes()).hexdigest()!='bc97d1fc7309b3156c75682b0d12d14618210f71fb1809020b5bbee4bc93667e':
         raise SystemExit('Unexpected installer hash; no application code imported')
     spec=importlib.util.spec_from_file_location('promotion',path)
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
