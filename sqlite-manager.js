@@ -83,9 +83,19 @@ function notificationSummary(data){
  const names={seven_days:'До 7 дней',three_days:'До 3 дней',one_day:'До 1 дня',expired:'Истекли'};
  return Object.entries(counts).map(([kind,count])=>names[kind]+': '+count).join(' · ');
 }
+function expiryTimestamp(client){
+ if(client.period==='lifetime'||!client.end_date)return Infinity;
+ const value=Date.parse(client.end_date.includes('T')?client.end_date:client.end_date.slice(0,10)+'T00:00:00+03:00');
+ return Number.isFinite(value)?value:Infinity;
+}
+function visibleClients(items,query,mode){
+ const shown=items.filter(client=>(!query||[client.name,client.phone,client.note].some(value=>String(value||'').toLowerCase().includes(query)))&&(mode!=='referrals'||!!client.referrer_id));
+ if(mode==='expiry')shown.sort((a,b)=>{const left=expiryTimestamp(a),right=expiryTimestamp(b);return left===right?Number(b.id)-Number(a.id):left-right});
+ return shown;
+}
 function render(){
  const q=$('search').value.trim().toLowerCase(),f=$('filter').value;
- const shown=clients.filter(c=>(!q||[c.name,c.phone,c.note].some(v=>String(v||'').toLowerCase().includes(q)))&&(f==='all'||(f==='lifetime'&&c.period==='lifetime')||(f==='active'&&(c.period==='lifetime'||remaining(c)>0))||(f==='expired'&&c.period!=='lifetime'&&remaining(c)<=0)||(f==='soon'&&c.period!=='lifetime'&&remaining(c)>0&&remaining(c)<=7)||(f==='referrals'&&!!c.referrer_id)||(f==='wg_on'&&wg.some(w=>String(w.id)===String(c.wg_client_id)&&w.enabled))||(f==='wg_off'&&wgAvailable&&wg.some(w=>String(w.id)===String(c.wg_client_id)&&!w.enabled))));
+ const shown=visibleClients(clients,q,f);
  $('counts').textContent='Всего: '+clients.length+' · Активных: '+clients.filter(c=>c.period==='lifetime'||remaining(c)>0).length;
  renderAlerts();
  const wgIds=new Set(wg.map(w=>w.id));
@@ -145,6 +155,7 @@ $('login').onsubmit=async e=>{
  }catch(e){token='';sessionStorage.removeItem(TOKEN_KEY);msg('Ошибка входа: '+e.message,true)}
 };
 async function importProfiles(){
+ if(window.matchMedia('(max-width:900px)').matches)return;
  const button=$('importProfiles');if(button)button.disabled=true;
  try{
   const result=await call('/api/clients/import');const candidates=result.candidates||[];
@@ -430,7 +441,7 @@ $('siteNotifications').addEventListener('toggle',e=>{if(e.target.matches('.atten
 $('siteNotifications').addEventListener('click',e=>{
  const button=e.target.closest('button[data-jump-client]');if(!button)return;
  const id=button.dataset.jumpClient;
- $('search').value='';const targetClient=clients.find(c=>String(c.id)===id);$('filter').value=targetClient&&targetClient.period!=='lifetime'&&remaining(targetClient)<=0?'expired':'active';render();
+ $('search').value='';$('filter').value='all';render();
  const mobile=window.matchMedia('(max-width:900px)').matches;
  const container=mobile?$('cards'):$('rows');
  const target=Array.from(container.querySelectorAll('[data-client-id]')).find(el=>el.dataset.clientId===id);
@@ -502,5 +513,6 @@ setInterval(refreshWarnings,60000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshWarnings()});
 
 })();
+
 
 
