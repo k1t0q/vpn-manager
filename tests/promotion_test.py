@@ -23,7 +23,7 @@ class PromotionTests(unittest.TestCase):
             self.assertEqual(opened.call_count,2)
     def test_code_rollback_does_not_restore_databases_profiles_or_awg_configuration(self):
         plan=json.dumps(dict(old_enabled={unit:'enabled' for unit in promotion.OLD},caddy_mode=0o644))
-        with patch.object(promotion,'run') as run,patch.object(promotion,'write') as write,patch.object(Path,'read_text',return_value=plan),patch.object(Path,'read_bytes',return_value=b'old caddy'),patch.object(Path,'unlink') as unlink:
+        with patch.object(promotion,'run') as run,patch.object(promotion,'write') as write,patch.object(Path,'read_text',return_value=plan),patch.object(Path,'read_bytes',return_value=b'old caddy'),patch.object(Path,'unlink') as unlink,patch('builtins.print'):
             promotion.rollback(Path('/root/vpn-manager-backups/live-promotion-20261113T080000Z'))
         self.assertEqual([str(c.args[0]) for c in write.call_args_list],['/etc/caddy/Caddyfile'])
         commands=[c.args for c in run.call_args_list]
@@ -63,6 +63,19 @@ class PromotionTests(unittest.TestCase):
         for path in ('/api/managed/create','/api/wg/client/1/disable','/api/managed/clients/1/edit'):
             with self.assertRaises(StateError):bridge.dispatch('POST',path,{},'test-request-0001')
         self.assertEqual(store.mock_calls,[])
+    def test_staging_credentials_tokens_and_origin_do_not_authorize_production(self):
+        with tempfile.TemporaryDirectory() as folder:
+            apps=[]
+            for mode,code,port in [('stage','stage-test-code',8443),('live','live-test-code',8444)]:
+                db=Path(folder)/(mode+'.db');sqlite3.connect(db).close()
+                app=create_app(dict(TESTING=True,DB_PATH=str(db),ADMIN_CODE=code,ORIGIN='https://example.test:'+str(port)))
+                apps.append(app.test_client())
+            stage,live=apps
+            stage_token=stage.post('/auth/login',json={'code':'stage-test-code'}).json['access_token']
+            self.assertEqual(live.post('/auth/logout',headers={'Authorization':'Bearer '+stage_token}).status_code,401)
+            self.assertEqual(live.post('/auth/login',json={'code':'stage-test-code'},headers={'Origin':'https://example.test:8444'}).status_code,401)
+            self.assertEqual(live.post('/auth/login',json={'code':'live-test-code'},headers={'Origin':'https://example.test:8443'}).status_code,403)
+            self.assertEqual(live.post('/auth/login',json={'code':'live-test-code'},headers={'Origin':'https://example.test:8444'}).status_code,200)
     def test_baseline_freezes_59_keys_and_five_existing_expiry_holds(self):
         import awg_provision_test as fixture
         from datetime import datetime,timezone

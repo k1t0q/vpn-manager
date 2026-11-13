@@ -64,7 +64,7 @@ are panel alerts and a durable notification outbox. Interface autostart is
 enabled in systemd, but the origin of the currently manually-owned interface
 has not been established and a reboot has not been performed.
 
-Validation: 80 Python tests and 3 JavaScript tests, including legacy ID mapping,
+Validation: 81 Python tests and 3 JavaScript tests, including legacy ID mapping,
 mixed historic owners, exact trial referral deadlines, import crash/replay,
 delivery deduplication, initial expiry holds, irreversible hold consumption,
 scheduler readiness, snapshot write rejection, canonical deletion and code-only
