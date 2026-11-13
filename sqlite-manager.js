@@ -109,10 +109,9 @@ async function refresh(){
  importer.hidden=!capabilities.profile_import;
  importer.style.display=capabilities.profile_import?'':'none';
  clients=dataList(a);
- clients.sort((a,b)=>{
-  const ad=Date.parse(a.created_at||'')||0,bd=Date.parse(b.created_at||'')||0;
-  return bd-ad || Number(b.id||0)-Number(a.id||0);
- });
+ // IDs are assigned monotonically by atomic provisioning. Historic/imported
+ // timestamps can be missing or in the future; they must not hide new clients.
+ clients.sort((a,b)=>Number(b.id||0)-Number(a.id||0));
  wg=b.clients||[];wgAvailable=!b.error;render();
  msg(b.error?'Клиенты загружены, AmneziaWG недоступен: '+b.error:capabilities.read_only?'Тестовая панель доступна только для просмотра':'Данные обновлены',!!b.error);
 }
