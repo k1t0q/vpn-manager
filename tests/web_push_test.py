@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'server'))
 from flask import Flask, jsonify, request
@@ -119,6 +119,22 @@ class PushTests(unittest.TestCase):
         self.sub['endpoint'] += '2'
         self.subscribe()
         self.assertEqual(push.deliver(self.db, self.key, [self.record(3)], self.sender, self.now)['sent'], 2)
+
+    def test_real_webpush_encryption_round_trip_without_network(self):
+        import http_ece
+        session = Mock()
+        session.post.return_value = Mock(status_code=201, text='', headers={})
+        transport = session.post
+        message = dict(title='VPN MANAGER', body='Тест уведомления')
+        with patch('requests.Session', return_value=session):
+            push.send(self.sub, message, self.key)
+        kwargs = transport.call_args.kwargs
+        self.assertFalse(kwargs['allow_redirects'])
+        self.assertEqual(kwargs['headers']['content-encoding'], 'aes128gcm')
+        private = serialization.load_pem_private_key(Path(self.key).read_bytes(), password=None)
+        clear = http_ece.decrypt(kwargs['data'], private_key=private, auth_secret=b'a' * 16)
+        self.assertEqual(json.loads(clear), message)
+        self.assertNotIn(message['body'].encode(), kwargs['data'])
 
 
 if __name__ == '__main__':
