@@ -32,9 +32,10 @@ function wgDisplay(c,mobile=false){
  if(!c.wg_client_id)return '<span class="wg-status none">Не привязан</span>';
  const w=wg.find(x=>String(x.id)===String(c.wg_client_id));
  if(!w)return '<span class="wg-status off">Не найден</span>';
+ const profile='<small class="vpn-profile-name">'+esc(peerLabel(c))+'</small>';
  const status='<span class="wg-status '+(w.enabled?'on':'off')+'">'+(w.enabled?'● VPN включён':'● VPN отключён')+'</span>';
- if(mobile)return '<span class="mobile-vpn-line">'+status+'<span class="mobile-vpn-meta">'+(w.address?' · IP: '+esc(w.address):'')+' · '+esc(lastSeen(w))+'</span></span>';
- return status+(w.address?'<small>IP: '+esc(w.address)+' / активность: '+esc(lastSeen(w))+'</small>':'<small>Активность: '+esc(lastSeen(w))+'</small>');
+ if(mobile)return profile+'<span class="mobile-vpn-line">'+status+'<span class="mobile-vpn-meta">'+(w.address?' · IP: '+esc(w.address):'')+' · '+esc(lastSeen(w))+'</span></span>';
+ return profile+status+(w.address?'<small>IP: '+esc(w.address)+' / активность: '+esc(lastSeen(w))+'</small>':'<small>Активность: '+esc(lastSeen(w))+'</small>');
 }
 
 async function call(path,opts={}){
@@ -118,7 +119,7 @@ async function refresh(){
 $('toggleCode').onclick=()=>{const field=$('code'),visible=field.type==='password';field.type=visible?'text':'password';$('toggleCode').textContent=visible?'Скрыть':'Показать';$('toggleCode').setAttribute('aria-label',visible?'Скрыть код':'Показать код')};
 $('login').onsubmit=async e=>{
  e.preventDefault();try{
- const d=await call('/auth/login',{method:'POST',body:JSON.stringify({code:$('code').value})});
+ const d=await call('/auth/login',{method:'POST',body:JSON.stringify({code:$('code').value.trim()})});
  token=d.access_token||d.token||'';if(!token)throw Error('Сервер не вернул токен');sessionStorage.setItem(TOKEN_KEY,token);
  $('code').value='';await refresh();$('loginPane').classList.add('m-hide');$('workspace').classList.remove('m-hide');
  }catch(e){token='';sessionStorage.removeItem(TOKEN_KEY);msg('Ошибка входа: '+e.message,true)}
@@ -135,9 +136,10 @@ async function importProfiles(){
  }catch(err){msg('Импорт не выполнен: '+err.message,true)}finally{if(button)button.disabled=false}
 }
 function peerLabel(c){
- const raw=wg.find(w=>String(w.id)===String(c.wg_client_id))?.name||'';
- const match=String(raw).trim().match(/^((?:CAESAR|CEASER) BOT #\d+)(?=\s|$)/i);
- return match?match[1]:(raw||c.name);
+ const peer=wg.find(w=>String(w.id)===String(c.wg_client_id));
+ const raw=peer?.profile_name||peer?.name||'';
+ const match=String(raw).trim().match(/^(?:CAESAR|CEASER)\s+BOT\s*#\s*(\d+)(?=\s|$)/i);
+ return match?'CAESAR BOT #'+Number(match[1]):'CAESAR BOT #'+c.id;
 }
 function addMonthsISO(base,months){
  const parts=String(base).split('-').map(Number);
@@ -265,19 +267,10 @@ async function handleClientAction(e){
  }
  const peerName=peerLabel(c)||'AmneziaWG';
  const fileName=peerName.replace(/[\\/:*?"<>|\x00-\x1f]/g,'_').trim()+'.conf';
- const file=new File([blob],fileName,{type:'application/octet-stream'});
- if(typeof navigator.share==='function'&&typeof navigator.canShare==='function'&&navigator.canShare({files:[file]})){
-  try{
-   await navigator.share({files:[file]});
-   msg('Конфигурация передана в меню отправки');
-  }catch(err){
-   if(err?.name!=='AbortError')throw Error('Не удалось открыть отправку файла: '+err.message);
-  }
- }else{
-  const url=URL.createObjectURL(blob);
-  const link=document.createElement('a');link.href=url;link.download=fileName;document.body.appendChild(link);link.click();link.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),60000);
- }
+ const url=URL.createObjectURL(blob);
+ const link=document.createElement('a');link.href=url;link.download=fileName;document.body.appendChild(link);link.click();link.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),60000);
+ msg('Конфигурация скачивается: '+fileName);
  }else if(btn.dataset.act==='wg-create'){
  if(!confirm('Создать AmneziaWG-профиль для '+c.name+' и привязать к SQLite?'))return;
  const result=await call('/api/wg/client',{method:'POST',body:JSON.stringify({name:nextPeerName()})});
