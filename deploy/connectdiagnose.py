@@ -17,5 +17,19 @@ def shape(d):
   elif isinstance(v,list):
    for i,item in enumerate(v):walk(item,path+'/'+str(i))
  walk(d);return out
-print('OLD '+json.dumps(shape(a['apps']['http']['servers'])))
-print('NEW '+json.dumps(shape(b['apps']['http']['servers'])))
+
+
+
+from collections import Counter
+def counts(d):return Counter(x for v in d['apps']['http']['servers'].values() for x in v.get('listen',[]))
+print('COUNTERS '+str(counts(a))+' -> '+str(counts(b)))
+def normalize(route):
+ names={}
+ def walk(v):
+  if isinstance(v,dict):return {k:(names.setdefault(x,'g'+str(len(names))) if k=='group' and isinstance(x,str) else walk(x)) for k,x in v.items()}
+  if isinstance(v,list):return [walk(x) for x in v]
+  return v
+ return json.dumps(walk(route),sort_keys=True)
+old=[r for v in a['apps']['http']['servers'].values() for r in v.get('routes',[])]
+new=[r for v in b['apps']['http']['servers'].values() for r in v.get('routes',[])]
+for i,r in enumerate(old):print('ROUTE '+str(i)+' preserved='+str(normalize(r) in [normalize(x) for x in new]))
