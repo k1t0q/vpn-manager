@@ -35,7 +35,7 @@ test('warning windows are exclusive and date-only expiry uses Moscow midnight',(
   assert.equal(c.alertWindow({period:'trial',end_date:new Date(now+days*86400000).toISOString()}),kind);
  }
  assert.equal(c.alertWindow({period:'lifetime',end_date:'2000-01-01'}),null);
- assert.equal(c.remaining({period:'1m',end_date:'2026-11-14'}),1);
+ assert.equal(vm.runInContext("remaining({period:'1m',end_date:'2026-11-14'})",c),1);
 });
 test('on-site notices deduplicate and ignore obsolete deadlines and warning stages',()=>{
  const {sandbox:c,now}=warningContext();
