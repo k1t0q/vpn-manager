@@ -27,10 +27,13 @@ def main():
     original=json.loads((STATE/'baseline.json').read_text());ids=set(original['clients'])
     peer_keys=run('awg','show','awg-test','peers')
     xray=run('systemctl','show','xray.service','-p','MainPID','--value')
-    profile_hashes={str(path):hashlib.sha256(path.read_bytes()).hexdigest() for cid in ids for path in (PROFILES/cid/'client.conf',PROFILES/cid/'metadata.json')}
     with sqlite3.connect(DB) as con:
         con.row_factory=sqlite3.Row
         original_rows={str(row['id']):dict(row) for row in con.execute('SELECT * FROM clients') if str(row['id']) in ids}
+        table=con.execute("SELECT 1 FROM sqlite_master WHERE name='awg_deleted_clients'").fetchone()
+        archived={str(row[0]) for row in con.execute('SELECT client_id FROM awg_deleted_clients')} if table else set()
+    active_originals=ids-archived
+    profile_hashes={str(path):hashlib.sha256(path.read_bytes()).hexdigest() for cid in active_originals for path in (PROFILES/cid/'client.conf',PROFILES/cid/'metadata.json')}
     materials={}
     for source,target,old,new,mode in FILES:
         if target.is_symlink() or hashlib.sha256(target.read_bytes()).hexdigest()!=old:raise SystemExit('Installed file differs from reviewed release')
@@ -87,10 +90,11 @@ def main():
     with sqlite3.connect(DB) as con:
         con.row_factory=sqlite3.Row
         after={str(row['id']):dict(row) for row in con.execute('SELECT * FROM clients') if str(row['id']) in ids}
+        assert archived=={str(row[0]) for row in con.execute('SELECT client_id FROM awg_deleted_clients')}
     assert after==original_rows
     assert peer_keys==run('awg','show','awg-test','peers')
     assert xray==run('systemctl','show','xray.service','-p','MainPID','--value')
     (STATE/'profile-labels-release.json').write_text(json.dumps(dict(release=RELEASE,backup=str(backup),original_clients=59)))
-    print('PROFILE_LABELS_AND_DOWNLOAD_READY; original 59 rows, metadata, config bytes, runtime peers and Xray unchanged')
+    print('PROFILE_LABELS_AND_DOWNLOAD_READY; original records, active profile metadata/config bytes, archive state, runtime peers and Xray unchanged')
     print('CODE_BACKUP: '+str(backup))
 if __name__=='__main__':main()
