@@ -59,11 +59,11 @@ function alertWindow(c){
 }
 function renderAlerts(){
  const box=$('siteNotifications');if(!box)return;
- const groups=[['expired','Истекли'],['one_day','До 1 дня'],['three_days','До 3 дней'],['seven_days','До 7 дней']];
+ const groups=[['expired','Истекли'],['seven_days','До 7 дней']];
  const open=box.querySelector('.attention-group[open]')?.dataset.alertGroup;
  box.classList.remove('hidden');
  box.innerHTML=groups.map(([key,title])=>{
-  const items=clients.filter(c=>alertWindow(c)===key).sort((a,b)=>remaining(a)-remaining(b));
+  const items=clients.filter(c=>key==='seven_days'?remaining(c)>0&&remaining(c)<=7:alertWindow(c)===key).sort((a,b)=>remaining(a)-remaining(b));
   const type=key==='expired'?'expired':'soon';
   return '<details name="vpn-attention" data-alert-group="'+key+'" class="attention-group '+type+'"><summary>'+title+' <span class="attention-count">'+items.length+'</span><span class="attention-chevron" aria-hidden="true"></span></summary><div class="attention-list">'+(items.length?items.map(c=>'<button type="button" class="attention-person" data-jump-client="'+c.id+'"><div><b>'+esc(c.name)+'</b><small>До '+esc(formatDate(c.end_date))+'</small></div><strong>'+(key==='expired'?(remaining(c)===0?'Сегодня':Math.abs(remaining(c))+' дн. назад'):remaining(c)+' дн.')+'</strong></button>').join(''):'<div class="attention-empty">Нет клиентов</div>')+'</div></details>';
  }).join('');
@@ -122,7 +122,7 @@ function render(){
  $('referrer').value=current;
 }
 async function refresh(silent=false){
- const [a,b,caps,notices]=await Promise.all([call('/api/clients'),call('/api/wg/clients').catch(e=>({clients:[],error:e.message})),call('/health').catch(()=>({})),call('/api/notifications').catch(()=>({notifications:[]}))]);
+ const [a,b,caps]=await Promise.all([call('/api/clients'),call('/api/wg/clients').catch(e=>({clients:[],error:e.message})),call('/health').catch(()=>({}))]);
  capabilities=caps;
  let importer=$('importProfiles');
  if(!importer){importer=document.createElement('button');importer.id='importProfiles';importer.className='secondary';importer.textContent='Импорт профилей';$('exportCsv').insertAdjacentElement('afterend',importer);importer.onclick=importProfiles}
@@ -133,9 +133,7 @@ async function refresh(silent=false){
  // timestamps can be missing or in the future; they must not hide new clients.
  clients.sort((a,b)=>Number(b.id||0)-Number(a.id||0));
  wg=b.clients||[];wgAvailable=!b.error;render();
- const notice=notificationSummary(notices);
  if(b.error)msg('Клиенты загружены, AmneziaWG недоступен: '+b.error,true);
- else if(notice)msg('Уведомления: '+notice);
  else if(!silent)msg(capabilities.read_only?'Тестовая панель доступна только для просмотра':'Данные обновлены');
 }
 $('toggleCode').onclick=()=>{const field=$('code'),visible=field.type==='password';field.type=visible?'text':'password';$('toggleCode').textContent=visible?'Скрыть':'Показать';$('toggleCode').setAttribute('aria-label',visible?'Скрыть код':'Показать код')};
@@ -504,4 +502,5 @@ setInterval(refreshWarnings,60000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshWarnings()});
 
 })();
+
 

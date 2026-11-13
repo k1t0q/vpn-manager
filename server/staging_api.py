@@ -123,6 +123,10 @@ def create_app(config=None):
     return jsonify(ok=True,clients=[{k:v for k,v in peer.items() if k in fields} for peer in peers])
    except (ValueError,KeyError,AttributeError,TypeError):return jsonify(ok=False,error='Unexpected AWG list format'),502
   return Response(r.content,status=r.status_code,content_type=r.headers.get('Content-Type','application/octet-stream'))
+ if app.config.get('WEB_PUSH'):
+  from web_push import register as register_push
+  register_push(app,authorized)
  return app
 app=create_app()
+
 
