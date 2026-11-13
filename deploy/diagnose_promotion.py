@@ -17,7 +17,7 @@ import tempfile
 
 
 def command(args):
-    return subprocess.run(args,capture_output=True,text=True,timeout=20)
+    return subprocess.run(args,capture_output=True,text=True,timeout=20,cwd="/")
 
 
 def file_info(path):
@@ -40,6 +40,25 @@ def runtime_info(path,expected_uid=0):
     result['python_exists']=python.exists()
     if python.exists():result['python_target']=str(python.resolve())
     return result
+
+
+def journal_summary(text):
+    # Never publish raw journal messages: errors can contain profile material.
+    frames=set();exceptions=set();categories=set();modules=set()
+    for line in text.splitlines():
+        try:message=str(json.loads(line).get('MESSAGE',''))
+        except (ValueError,TypeError):continue
+        for filename,number in re.findall(r'File "([^"\n]+)", line ([0-9]+)',message):
+            frames.add((Path(filename).name,int(number)))
+        for name in re.findall(r'(?m)^([A-Za-z][A-Za-z0-9_]*(?:Error|Exception|Exit)):',message):exceptions.add(name)
+        for module in re.findall(r"No module named '([A-Za-z0-9_.]+)'",message):modules.add(module)
+        for needle,label in (('Permission denied','permission_denied'),('Read-only file system','read_only_filesystem'),
+            ('Failed at step','systemd_setup_failure'),('Address already in use','port_occupied'),
+            ('Staging writer must be stopped','staging_writer_active'),('Production activation is not approved','activation_not_approved'),
+            ('New service health check failed','health_failed')):
+            if needle in message:categories.add(label)
+    return dict(frames=[dict(file=name,line=number) for name,number in sorted(frames)],
+                exceptions=sorted(exceptions),categories=sorted(categories),missing_modules=sorted(modules))
 
 
 def main():
@@ -69,6 +88,10 @@ def main():
     for unit in ('vpn-manager.service','vpn-manager-panel-test.service','vpn-manager-awg-readonly.service','vpn-manager-live-bridge.service','vpn-manager-live-api.service','vpn-manager-preview-snapshot.service','xray.service','caddy.service'):
         data=command(['systemctl','show',unit,'-p','LoadState','-p','ActiveState','-p','SubState','-p','Result','-p','ExecMainStatus','-p','User','-p','MainPID'])
         report['services'][unit]=dict(line.split('=',1) for line in data.stdout.splitlines() if '=' in line)
+    report['recent_live_errors']={}
+    for unit in ('vpn-manager-live-bridge.service','vpn-manager-live-api.service','vpn-manager-preview-snapshot.service'):
+        logs=command(['journalctl','-u',unit,'--since','2026-11-13 07:20:00 UTC','-n','200','--no-pager','-o','json'])
+        report['recent_live_errors'][unit]=journal_summary(logs.stdout)
     report['backups']=[]
     for folder in sorted(Path('/root/vpn-manager-backups').glob('live-promotion-*'))[-3:]:
         report['backups'].append(dict(path=str(folder),before_stop_backup=(folder/'clients-before-stop.db').exists(),after_stop_backup=(folder/'clients.db').exists(),rollback_plan=(folder/'rollback.json').exists()))
