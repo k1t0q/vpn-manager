@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
 import sqlite3
 import sys
@@ -14,6 +15,30 @@ from staging_api import create_app
 
 
 class PromotionTests(unittest.TestCase):
+    def test_restrictive_umask_keeps_state_private_but_allows_api_to_read_code(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)
+            with patch.multiple(promotion,STATE=root/'state',CODE=root/'code',SITE=root/'site',AUTH=root/'auth'):
+                old=os.umask(0o077)
+                try:promotion.prepare_directories()
+                finally:os.umask(old)
+                for path in (root/'site',root/'site/server',root/'site/public'):
+                    self.assertEqual(path.stat().st_mode & 0o777,0o755)
+                for path in (root/'state',root/'code',root/'auth'):
+                    self.assertEqual(path.stat().st_mode & 0o777,0o700)
+    def test_recovery_refuses_any_previously_created_session_database(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)
+            paths={name:root/name for name in ('STATE','CODE','SITE','AUTH')}
+            for path in paths.values():path.mkdir()
+            (paths['AUTH']/'sessions.db').touch()
+            account=SimpleNamespace(pw_uid=os.getuid(),pw_dir='/nonexistent',pw_shell='/usr/sbin/nologin')
+            with patch.multiple(promotion,**paths),patch.object(promotion.pwd,'getpwnam',return_value=account),patch.object(Path,'rename') as rename:
+                with self.assertRaisesRegex(RuntimeError,'reviewed recovery point'):
+                    promotion.archive_incomplete_preparation()
+                rename.assert_not_called()
+
     def test_health_waits_for_scheduler_instead_of_accepting_early_ok(self):
         def response(value):
             item=Mock();item.__enter__=Mock(return_value=item);item.__exit__=Mock(return_value=False)
