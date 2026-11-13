@@ -50,7 +50,8 @@ class Deleter(PeerStore):
                 backup=self.state/('op-'+uuid.uuid4().hex);backup.mkdir(mode=0o700)
                 if any(item.is_symlink() for item in path.parent.rglob('*')):
                     raise StateError('Symlink profile rejected')
-                material=backup/'profile';shutil.copytree(path.parent,material)
+                material=backup/'removed-profile';shutil.copytree(path.parent,material)
+                tombstone=self.profiles/('.removed-'+uuid.uuid4().hex)
                 for item in material.rglob('*'):
                     if item.is_symlink():raise StateError('Symlink profile rejected')
                     os.chmod(item,0o700 if item.is_dir() else 0o600)
@@ -64,13 +65,13 @@ class Deleter(PeerStore):
                              before_block=block,after_block=None,
                              before_config=before,after_config=after,
                              before_metadata=before_meta,after_metadata=None,
-                             new_profile_backup=str(material))
+                             new_profile_backup=str(material),profile_tombstone=str(tombstone))
                 atomic_write(backup/'journal.json',json.dumps(journal).encode())
                 atomic_write(self.state/'pending.json',json.dumps(journal).encode())
                 self.fault('prepared')
                 atomic_write(self.config,after.encode());self.fault('config_written')
                 self.runtime.apply(public,None);self.fault('runtime_applied')
-                os.replace(path.parent,backup/'removed-profile')
+                os.replace(path.parent,tombstone)
                 sync_dir(self.profiles);sync_dir(backup);self.fault('profile_archived')
                 con.execute('INSERT INTO awg_deleted_clients(client_id) VALUES(?)',(cid,))
                 con.execute('INSERT INTO client_history(user_id,client_id,event_type,description) VALUES(?,?,?,?)',
@@ -79,5 +80,6 @@ class Deleter(PeerStore):
                 con.execute('INSERT INTO awg_operations(request_id,payload_hash,result) VALUES(?,?,?)',
                             (request_id,payload,json.dumps(result)))
                 con.commit();self.fault('db_committed')
+                shutil.rmtree(tombstone);sync_dir(self.profiles)
                 (self.state/'pending.json').rename(backup/'committed.json');sync_dir(self.state)
                 return result
