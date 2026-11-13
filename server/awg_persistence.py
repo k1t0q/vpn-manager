@@ -236,6 +236,13 @@ class PeerStore:
         atomic_write(self.config, journal[direction + '_config'].encode())
         metadata = journal[direction + '_metadata']
         profile = self._metadata(journal['cid']).parent
+        tombstone = Path(journal['profile_tombstone']) if journal.get('profile_tombstone') else None
+        if tombstone is not None:
+            if tombstone.is_symlink() or tombstone.parent.resolve() != self.profiles.resolve() or not re.fullmatch(r'\.removed-[a-f0-9]{32}', tombstone.name):
+                raise StateError('Invalid profile tombstone path')
+            if not committed and not profile.exists() and tombstone.exists():
+                os.replace(tombstone, profile)
+                sync_dir(self.profiles)
         if metadata is None:
             # Aborted creation: retain generated material in a private archive,
             # remove it from the active profile directory, never rotate a live key.
@@ -254,6 +261,9 @@ class PeerStore:
             atomic_write(self._metadata(journal['cid']), metadata.encode())
         for change in journal.get('related_metadata', []):
             atomic_write(self._metadata(change['cid']), change[direction].encode())
+        if tombstone is not None and tombstone.exists():
+            shutil.rmtree(tombstone)
+            sync_dir(self.profiles)
         pending.rename(self.state / ('recovered-' + uuid.uuid4().hex + '.json'))
         sync_dir(self.state)
         return direction
