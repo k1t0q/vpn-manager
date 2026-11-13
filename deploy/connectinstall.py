@@ -166,7 +166,7 @@ PrivateTmp=true
 PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=true
-CapabilityBoundingSet=
+CapabilityBoundingSet=CAP_CHOWN
 ReadWritePaths=/var/lib/vpn-manager-connect/material
 InaccessiblePaths=-/etc/amnezia -/var/lib/vpn-manager-production -/etc/vpn-manager-live.env -/etc/vpn-manager-live-bridge.env
 '''
