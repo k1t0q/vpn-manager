@@ -68,12 +68,12 @@ for cid,original in baseline['clients'].items():
   if m['public_key']!=original['public_key'] or m['address']!=original['address']:changed.append(cid)
  except Exception:changed.append(cid)
 report['clients']={'rows_total':len(rows),'visible':len(active),'archived':len(deleted),'enabled':enabled,'runtime_peers':len(live),'disk_peers':len(disk),'unmanaged_runtime_peers':len(live-known),'mismatch_ids':mismatches,'original_identity_changes':changed,'sqlite_integrity':integrity}
-report['config_structure']={'sections':re.findall(r'^\\[([^]]+)\\]',CONFIG.read_text(),re.M),'interface_fields':sorted({line.split('=',1)[0].strip() for line in CONFIG.read_text().split('[Peer]',1)[0].splitlines() if '=' in line and not line.lstrip().startswith('#')})}
+report['config_structure']={'sections':re.findall(r'^\[([^]]+)\]',CONFIG.read_text(),re.M),'interface_fields':sorted({line.split('=',1)[0].strip() for line in CONFIG.read_text().split('[Peer]',1)[0].splitlines() if '=' in line and not line.lstrip().startswith('#')})}
 report['files']={}
 for p in [Path('/opt/vpn-manager/app.py'),Path('/opt/vpn-manager/awg_adapter.py'),Path('/opt/vpn-manager-production/server/production_app.py'),Path('/opt/vpn-manager-production/server/staging_api.py'),Path('/opt/vpn-manager-production/public/index.html'),Path('/opt/vpn-manager-production/public/sqlite-manager.js'),Path('/etc/caddy/Caddyfile')]:
  if p.exists():report['files'][str(p)]=digest(p)
 api=Path('/opt/vpn-manager-production/server/staging_api.py').read_text()
-report['api_routes']=sorted(set(re.findall(r"@app\\.(?:get|post|route)\\('([^']+)'",api)))
+report['api_routes']=sorted(set(re.findall(r"@app\.(?:get|post|route)\('([^']+)'",api)))
 report['boot_exec']=run('systemctl','show','awg-quick@awg-test.service','-p','ExecStart')
 report['vpn_configuration_hash']=digest(CONFIG)
 private=dict(report,profile_hashes={str(p.parent.name):digest(p) for p in PROFILES.glob('*/client.conf')})
