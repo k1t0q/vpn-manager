@@ -1,29 +1,14 @@
 """Read-only client snapshot; never writes working SQLite, metadata or VPN state.
 
-The root-owned label map is built from the same authorized AWG roster used by
-the manager. Missing labels fail closed until refreshed; never guess a number.
+The same existing awg_profile_labels registry used by the manager is read in
+the client database transaction. No API token or new label assignment is used.
 """
 from pathlib import Path
-import fcntl, grp, hashlib, json, os, re, sqlite3, tempfile, time
-from urllib.request import Request, build_opener, ProxyHandler
+import fcntl, grp, hashlib, json, os, sqlite3, tempfile, time
 
 ROOT=Path('/var/lib/vpn-manager-connect')
 DB=Path('/opt/vpn-manager/data/clients-staging.db')
 PROFILES=Path('/opt/vpn-manager/awg-clients')
-def label_map():
-    # The privileged reader uses its existing root credential only for this
-    # fixed GET. No credential is copied into public service state/material.
-    token=os.environ.get('PANEL_AWG_TOKEN','')
-    if len(token)<32:raise ValueError('Reader credential missing')
-    req=Request('http://127.0.0.1:5055/api/wg/clients',headers={'X-VPN-Token':token})
-    with build_opener(ProxyHandler({})).open(req,timeout=15) as response:peers=json.load(response)['clients']
-    labels={}
-    for peer in peers:
-        match=re.match(r'^(?:CAESAR|CEASER)\s+BOT\s*#\s*(\d+)(?=\s|$)',str(peer.get('profile_name') or peer.get('name') or '').strip(),re.I)
-        if match:labels[str(peer['id'])]=int(match[1])
-    if len(set(labels.values()))!=len(labels):raise ValueError('Duplicate labels')
-    return labels
-
 def write(path,data,gid):
     fd,name=tempfile.mkstemp(dir=path.parent,prefix='.portal-')
     try:
@@ -39,6 +24,8 @@ def build(db_path,profiles,labels,material,gid):
     with sqlite3.connect(db_path.as_uri()+'?mode=ro',uri=True) as con:
         con.row_factory=sqlite3.Row
         con.execute('BEGIN')
+        if labels is None:labels={str(r['client_id']):r['label_number'] for r in con.execute('SELECT client_id,label_number FROM awg_profile_labels')}
+        if len(set(labels.values()))!=len(labels):raise ValueError('Duplicate labels')
         rows=con.execute('SELECT id,wg_client_id,period,start_date,end_date FROM clients WHERE id NOT IN (SELECT client_id FROM awg_deleted_clients)').fetchall()
         for row in rows:
             cid=str(row['id']);peer=str(row['wg_client_id'] or '')
@@ -59,7 +46,7 @@ def build(db_path,profiles,labels,material,gid):
 def main():
     with open(ROOT/'material/.snapshot.lock','a') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX)
-        build(DB,PROFILES,label_map(),ROOT/'material',grp.getgrnam('vpn-connect').gr_gid)
+        build(DB,PROFILES,None,ROOT/'material',grp.getgrnam('vpn-connect').gr_gid)
 
 if __name__=='__main__':
     try:main()

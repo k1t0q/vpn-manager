@@ -12,6 +12,8 @@ class SnapshotTests(unittest.TestCase):
    with sqlite3.connect(db) as con:
     con.execute('CREATE TABLE clients(id INTEGER,wg_client_id TEXT,period TEXT,start_date TEXT,end_date TEXT)')
     con.execute('CREATE TABLE awg_deleted_clients(client_id TEXT)')
+    con.execute('CREATE TABLE awg_profile_labels(client_id INTEGER PRIMARY KEY,label_number INTEGER NOT NULL UNIQUE)')
+    con.executemany('INSERT INTO awg_profile_labels VALUES(?,?)',[(1,30),(2,31),(4,33)])
     for cid in range(1,5):con.execute('INSERT INTO clients VALUES(?,?,?,?,?)',(cid,str(cid),'1m','2026-01-01','2099-01-01'))
     con.execute("INSERT INTO awg_deleted_clients VALUES('2')")
    payload=b'[Interface]\nPrivateKey = test-fixture\n'
@@ -20,7 +22,7 @@ class SnapshotTests(unittest.TestCase):
    (profiles/'4/client.conf').unlink();(profiles/'4/client.conf').symlink_to(profiles/'1/client.conf')
    original=db.read_bytes();hashes={str(p):p.read_bytes() for p in profiles.glob('*/*')}
    def writer(p,data,gid):p.write_bytes(data)
-   with patch.object(module,'write',side_effect=writer):result=module.build(db,profiles,{'1':30,'2':31,'4':33},material,0)
+   with patch.object(module,'write',side_effect=writer):result=module.build(db,profiles,None,material,0)
    self.assertEqual(list(result),['1']);self.assertEqual(result['1']['number'],30);self.assertFalse(result['1']['enabled'])
    self.assertEqual((material/'1.conf').read_bytes(),payload);self.assertEqual(db.read_bytes(),original)
    for p,data in hashes.items():self.assertEqual(Path(p).read_bytes(),data)
