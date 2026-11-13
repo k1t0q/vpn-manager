@@ -2,11 +2,11 @@
  'use strict';
  const $=id=>document.getElementById(id),handle=location.pathname.slice(1),token=location.hash.slice(1);
  const valid=/^[A-Za-z0-9_-]{22}$/.test(handle)&&/^[A-Za-z0-9_-]{43}$/.test(token);
- let profile=null,file=null,qrUrl=null;
+ let profile=null,file=null,qrUrl=null,importUrl=null,importPreparing=false;
  const status=text=>{$('status').textContent=text};
  async function api(path,extra={}){
   const response=await fetch('/api/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({handle,token,...extra}),cache:'no-store',credentials:'same-origin',referrerPolicy:'no-referrer'});
-  if(!response.ok){const data=await response.json();if(response.status===401){$('account').hidden=true;$('loginPane').hidden=false;file=null}throw Error(data.error||'Не удалось выполнить запрос.')}
+  if(!response.ok){const data=await response.json();if(response.status===401){$('account').hidden=true;$('loginPane').hidden=false;file=null;profile=null;importUrl=null}throw Error(data.error||'Не удалось выполнить запрос.')}
   return response;
  }
  function show(data){
@@ -17,6 +17,9 @@
   $('subscriptionHint').textContent=data.lifetime?'Бессрочная подписка.':data.days_left===0?'Срок подписки истёк. Обратитесь к администратору для продления.':'Продление отобразится здесь автоматически.';
   $('vpnState').textContent=data.available?'Доступ включён':!data.enabled?'Доступ выключен':'Подписка истекла';
   for(const id of ['download','qr'])$(id).disabled=!data.available;
+  $('openApp').hidden=!data.import_pilot;$('incyHint').hidden=!data.import_pilot;
+  $('openApp').disabled=!data.available||!importUrl;
+  if(data.import_pilot&&data.available)prepareIncy();
   status('');
  }
  async function busy(button,action){if(button.disabled)return;button.disabled=true;button.setAttribute('aria-busy','true');try{await action()}catch(error){status(error.message)}finally{button.removeAttribute('aria-busy');button.disabled=!profile?.available;if(button.id==='login')button.disabled=false}}
@@ -25,7 +28,23 @@
  $('download').addEventListener('click',()=>busy($('download'),async()=>{status('Получаем профиль…');file=await getFile();const url=URL.createObjectURL(file),a=document.createElement('a');a.href=url;a.download=file.name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);status('Профиль скачан. Импортируйте его в VPN-приложение.')}));
  $('qr').addEventListener('click',()=>busy($('qr'),async()=>{status('Получаем QR-код…');const response=await api('qr');if(qrUrl)URL.revokeObjectURL(qrUrl);qrUrl=URL.createObjectURL(await response.blob());$('qrImage').src=qrUrl;$('qrTitle').textContent=profile.label;$('qrDialog').showModal();status('')}));
  $('closeQr').addEventListener('click',()=>{$('qrDialog').close();$('qrImage').removeAttribute('src');if(qrUrl)URL.revokeObjectURL(qrUrl);qrUrl=null});
- $('logout').addEventListener('click',async()=>{await api('logout');file=null;profile=null;$('account').hidden=true;$('loginPane').hidden=false;document.title='CAESAR VPN — личный кабинет';status('Вы вышли из кабинета.')});
+ function makeIncyImport(bytes){let binary='';for(const byte of bytes)binary+=String.fromCharCode(byte);return 'incy://import/'+btoa(binary)}
+ async function prepareIncy(){
+  if(importUrl||importPreparing)return;
+  importPreparing=true;const button=$('openApp');button.disabled=true;button.setAttribute('aria-busy','true');
+  try{
+   const response=await api('download'),bytes=new Uint8Array(await response.arrayBuffer());
+   if(profile?.import_pilot&&profile.available){importUrl=makeIncyImport(bytes);button.disabled=false}
+  }catch(error){status(error.message)}
+  finally{importPreparing=false;button.removeAttribute('aria-busy')}
+ }
+ $('openApp').addEventListener('click',()=>{
+  if(!profile?.import_pilot||!profile.available||!importUrl)return;
+  status('Открываем INCY. Подтвердите импорт в приложении.');
+  window.location.href=importUrl;
+  setTimeout(()=>{if(document.visibilityState==='visible')status('Если INCY не открылся, установите или обновите приложение по ссылке ниже. Конфиг и QR также доступны.')},2500);
+ });
+ $('logout').addEventListener('click',async()=>{await api('logout');file=null;profile=null;importUrl=null;$('account').hidden=true;$('loginPane').hidden=false;document.title='CAESAR VPN — личный кабинет';status('Вы вышли из кабинета.')});
  if(!valid){$('login').disabled=true;status('Откройте полную персональную ссылку, полученную от администратора.')}else api('profile').then(r=>r.json()).then(data=>show(data.profile)).catch(()=>status('Введите код доступа для входа.'));
  setInterval(()=>{if(profile&&document.visibilityState==='visible')api('profile').then(r=>r.json()).then(data=>show(data.profile)).catch(error=>status(error.message))},60000);
 })();

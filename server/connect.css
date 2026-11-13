@@ -31,3 +31,5 @@ summary{min-height:36px;display:list-item;line-height:1.5;padding:8px 0}
 main>small{margin-top:16px;line-height:1.5}
 @media(max-width:420px){.app-links{gap:6px}.app-links a{padding:7px 4px;font-size:10.5px}.actions button{font-size:13px}}
 @media(prefers-reduced-motion:reduce){button[aria-busy="true"]::after{animation:none}}
+
+.actions #openApp{grid-column:1/-1}.m-import-hint{font-size:11px;line-height:1.5;margin:10px 0 0}.m-import-hint a{color:#95c6ff}

@@ -26,7 +26,7 @@ jobs:
           node-version: '22'
       - run: python -m pip install -r server/requirements.txt
       - run: python -m unittest discover -s tests -p '*_test.py' -v
-      - run: node --test tests/recovery.test.mjs
+      - run: node --test tests/recovery.test.mjs tests/incy_link.test.mjs
       - run: node --check sqlite-manager.js
       - run: python -m compileall -q server
 

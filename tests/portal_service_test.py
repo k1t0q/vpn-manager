@@ -95,5 +95,12 @@ class PortalTests(unittest.TestCase):
   self.assertEqual(self.client.post('/api/login',json=parts,headers={'Origin':'https://evil.test'}).status_code,403)
   self.assertEqual(self.issue(999).status_code,404)
   self.login(a);r=self.post('login',parts,code=a['access_code']);cookie=r.headers['Set-Cookie'];self.assertIn('Secure',cookie);self.assertIn('HttpOnly',cookie);self.assertIn('SameSite=Strict',cookie)
+ def test_direct_import_flag_is_only_disposable_pilot_and_still_requires_auth(self):
+  self.entries['92']=dict(self.entries['900'],number=93);(self.material/'92.conf').write_bytes(self.content);self.save()
+  normal,parts=self.login();self.assertFalse(self.post('profile',parts).json['profile']['import_pilot'])
+  pilot=self.issue(92).json;pilot_parts=self.parts(pilot)
+  self.assertEqual(self.post('download',pilot_parts).status_code,401)
+  self.login(pilot);self.assertTrue(self.post('profile',pilot_parts).json['profile']['import_pilot'])
+  self.entries['92']['enabled']=False;self.save();self.assertEqual(self.post('download',pilot_parts).status_code,403)
 
 if __name__=='__main__':unittest.main()

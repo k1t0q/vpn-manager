@@ -156,7 +156,7 @@ $('login').onsubmit=async e=>{
 };
 async function importProfiles(){
  if(window.matchMedia('(max-width:900px)').matches)return;
- const button=$('importProfiles');if(button)button.disabled=true;
+ const button=$('importProfiles');if(button){button.disabled=true;button.setAttribute('aria-busy','true')}
  try{
   const result=await call('/api/clients/import');const candidates=result.candidates||[];
   if(!candidates.length){msg('Все найденные профили AmneziaWG уже учтены');return}
@@ -164,7 +164,7 @@ async function importProfiles(){
   if(!confirm('Импортировать существующие профили ('+candidates.length+')?\n\n'+names+'\n\nКлючи, IP и конфигурации сохранятся.'))return;
   const imported=await call('/api/clients/import',{method:'POST',body:JSON.stringify({client_ids:candidates.map(c=>c.id).sort((a,b)=>a-b)})});
   await refresh();msg('Импортировано профилей: '+imported.imported.length);
- }catch(err){msg('Импорт не выполнен: '+err.message,true)}finally{if(button)button.disabled=false}
+ }catch(err){msg('Импорт не выполнен: '+err.message,true)}finally{if(button){button.disabled=false;button.removeAttribute('aria-busy')}}
 }
 function peerLabel(c){
  const peer=wg.find(w=>String(w.id)===String(c.wg_client_id));

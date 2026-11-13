@@ -64,11 +64,11 @@ def create_app(config=None):
         return row,current
     def available(current):
         return bool(current and current.get('enabled') and (current.get('period')=='lifetime' or (stamp(current.get('end_date')) or 0)>time.time()))
-    def info(current):
+    def info(current,cid=None):
         lifetime=current.get('period')=='lifetime';end=None if lifetime else stamp(current.get('end_date'));start=stamp(current.get('start_date'))
         seconds=max(0,(end or 0)-time.time())
         progress=100 if lifetime else max(0,min(100,seconds/max(1,(end or 0)-(start or time.time()))*100))
-        return dict(label='CAESAR VPN #'+str(current['number']),period=current.get('period'),start_date=current.get('start_date'),end_date=None if lifetime else current.get('end_date'),days_left=None if lifetime else math.ceil(seconds/86400),remaining_seconds=None if lifetime else int(seconds),progress=round(progress,1),enabled=bool(current.get('enabled')),available=available(current),lifetime=lifetime)
+        return dict(label='CAESAR VPN #'+str(current['number']),period=current.get('period'),start_date=current.get('start_date'),end_date=None if lifetime else current.get('end_date'),days_left=None if lifetime else math.ceil(seconds/86400),remaining_seconds=None if lifetime else int(seconds),progress=round(progress,1),enabled=bool(current.get('enabled')),available=available(current),lifetime=lifetime,import_pilot=cid==92)
     @app.after_request
     def headers(response):
         response.headers.update({'Cache-Control':'no-store, private','Pragma':'no-cache','X-Robots-Tag':'noindex, nofollow, noarchive, noimageindex','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"})
@@ -153,13 +153,13 @@ def create_app(config=None):
         with db() as con:
             con.execute('DELETE FROM portal_attempts WHERE bucket=?',(bucket,))
             con.execute('INSERT INTO portal_sessions VALUES(?,?,?,?)',(hashlib.sha256(value.encode()).hexdigest(),row['client_id'],row['handle'],now+43200))
-        response=jsonify(ok=True,profile=info(current));response.set_cookie('vpn_portal',value,max_age=43200,secure=True,httponly=True,samesite='Strict',path='/')
+        response=jsonify(ok=True,profile=info(current,row['client_id']));response.set_cookie('vpn_portal',value,max_age=43200,secure=True,httponly=True,samesite='Strict',path='/')
         return response
     @app.post('/api/profile')
     def profile():
         row,current=authorized_profile()
         if not current:return failure()
-        return jsonify(ok=True,profile=info(current))
+        return jsonify(ok=True,profile=info(current,row['client_id']))
     @app.post('/api/logout')
     def logout():
         with db() as con:con.execute('DELETE FROM portal_sessions WHERE session_hash=?',(hashlib.sha256(request.cookies.get('vpn_portal','').encode()).hexdigest(),))
