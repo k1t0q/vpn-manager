@@ -129,6 +129,10 @@ class Provisioner(PeerStore):
                 numeric=[int(p.name) for p in self.profiles.iterdir() if p.is_dir() and p.name.isdigit()]
                 cid=max([cid,*[n+1 for n in numeric]])
                 if cid>9999999999:raise StateError('Client ID range exhausted')
+                con.execute('CREATE TABLE IF NOT EXISTS awg_profile_labels(client_id INTEGER PRIMARY KEY,label_number INTEGER NOT NULL UNIQUE)')
+                number=max(cid,int(con.execute('SELECT coalesce(max(label_number),0)+1 FROM awg_profile_labels').fetchone()[0]))
+                con.execute('INSERT INTO awg_profile_labels(client_id,label_number) VALUES(?,?)',(cid,number))
+                profile_name='CAESAR BOT #'+str(number)
                 final=self.profiles/str(cid)
                 if final.exists():raise StateError('Profile directory already exists')
                 private,public,psk=self.runtime.new_keys()
@@ -143,7 +147,7 @@ class Provisioner(PeerStore):
                 start=date.fromisoformat(values['start_date'])
                 if values['period']=='trial':start=billing_date(now)
                 end=deadline(start,values['period'],now)
-                meta=dict(client_id=cid,name=values['name'],address=str(address),
+                meta=dict(client_id=cid,name=values['name'],profile_name=profile_name,address=str(address),
                           public_key=public,period=values['period'],end_date=end,enabled=True)
                 after_meta=json.dumps(meta,ensure_ascii=False,indent=2)
                 related=[]
@@ -195,7 +199,7 @@ class Provisioner(PeerStore):
                 if referrer is not None and BONUS.get(values['period']):
                     self._referral(con,cid,referrer,BONUS[values['period']],referral_end)
                 result=dict(ok=True,id=str(cid),client_id=cid,wg_client_id=str(cid),
-                            address=str(address),enabled=True)
+                            address=str(address),enabled=True,profile_name=profile_name)
                 con.execute('INSERT INTO awg_operations(request_id,payload_hash,result) VALUES(?,?,?)',
                             (request_id,payload,json.dumps(result)))
                 con.commit();self.fault('db_committed')
