@@ -29,6 +29,8 @@ def collect(db=DB, profiles=PROFILES, read_runtime=runtime):
     with sqlite3.connect(db.as_uri()+'?mode=ro', uri=True, timeout=5) as con:
         deleted=con.execute("SELECT 1 FROM sqlite_master WHERE name='awg_deleted_clients'").fetchone()
         rows = con.execute('SELECT id,wg_client_id,name FROM clients'+(' WHERE id NOT IN (SELECT client_id FROM awg_deleted_clients)' if deleted else '')+' ORDER BY id').fetchall()
+        table=con.execute("SELECT 1 FROM sqlite_master WHERE name='awg_profile_labels'").fetchone()
+        labels={str(cid):'CAESAR BOT #'+str(number) for cid,number in con.execute('SELECT client_id,label_number FROM awg_profile_labels')} if table else {}
     result = []
     ids = set()
     public_keys = set()
@@ -55,6 +57,7 @@ def collect(db=DB, profiles=PROFILES, read_runtime=runtime):
         if len(counters) != 2:
             raise ValueError('Invalid transfer response')
         result.append(dict(id=link, client_id=cid, name=str(name),
+                           profile_name=labels.get(str(cid),meta.get('profile_name','CAESAR BOT #'+str(cid))),
                            address=str(ipaddress.ip_address(meta['address'])),
                            enabled=public in peers,
                            latestHandshake=int(handshakes.get(public, '0')),
