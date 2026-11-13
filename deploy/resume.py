@@ -11,6 +11,26 @@ import sys
 import traceback
 
 EXPECTED='bc97d1fc7309b3156c75682b0d12d14618210f71fb1809020b5bbee4bc93667e'
+def inherit_tls(text):
+    from route_stage import clean_line
+    lines=text.splitlines(True)
+    starts=[i for i,line in enumerate(lines) if ':8443' in clean_line(line) and clean_line(line).rstrip().endswith('{')]
+    if len(starts)!=1:raise RuntimeError('Cannot identify existing TLS site')
+    depth=1;blocks=[];i=starts[0]+1
+    while i<len(lines) and depth:
+        clean=clean_line(lines[i]);stripped=clean.strip()
+        if depth==1 and (stripped=='tls' or stripped.startswith('tls ')):
+            first=i;balance=clean.count('{')-clean.count('}')
+            while balance>0:
+                i+=1
+                if i>=len(lines):raise RuntimeError('Unbalanced TLS block')
+                item=clean_line(lines[i]);balance+=item.count('{')-item.count('}')
+            blocks.append(''.join(lines[first:i+1]))
+        else:depth+=clean.count('{')-clean.count('}')
+        i+=1
+    if len(blocks)!=1:raise RuntimeError('Expected one explicit TLS policy')
+    return blocks[0]
+
 def main():
     if os.geteuid()!=0:raise SystemExit('Root required')
     os.umask(0o077)
@@ -46,6 +66,21 @@ def main():
         else:continue
         if path.is_symlink() or path.stat().st_uid!=0 or hashlib.sha256(path.read_bytes()).hexdigest()!=digest:raise SystemExit('Prepared API or asset mismatch')
     m.run('runuser','-u','vpn-panel','--',str(m.SITE/'venv/bin/python'),'-c','import flask,requests,gunicorn')
+    import route_live
+    route_live.ROUTES=route_live.ROUTES.replace('https://185-23-239-142.sslip.io:8444 {\n','https://185-23-239-142.sslip.io:8444 {\n'+inherit_tls(Path('/etc/caddy/Caddyfile').read_text()),1)
+    # Validate the exact repaired TLS candidate before stopping any API.
+    import tempfile
+    original_caddy=route_live.CONFIG.read_bytes()
+    route_live.SNIPPET.write_text(route_live.ROUTES);route_live.SNIPPET.chmod(0o644)
+    fd,candidate_name=tempfile.mkstemp(dir=route_live.CONFIG.parent,prefix='.live-reviewed-');os.close(fd)
+    candidate_path=Path(candidate_name)
+    try:
+        candidate_path.write_bytes(original_caddy.rstrip()+b'\n\nimport /etc/caddy/vpn-manager-live.caddy\n')
+        route_live.verify_listeners(route_live.adapt(route_live.CONFIG),route_live.adapt(candidate_path))
+        route_live.run('caddy','validate','--config',str(candidate_path),'--adapter','caddyfile')
+    finally:
+        candidate_path.unlink(missing_ok=True);route_live.SNIPPET.unlink(missing_ok=True)
+    print('REPAIRED_TLS_PREFLIGHT_READY')
     for old in m.OLD:
         folder=Path('/etc/systemd/system',old+'.d');folder.mkdir(exist_ok=True)
         m.write(folder/'live-writer.conf',('[Unit]\nConditionPathExists=!'+str(m.STATE/'activation.json')+'\n').encode(),0o644)
@@ -67,3 +102,4 @@ def main():
     exec(compile(body,'reviewed-prepared-activation','exec'),m.__dict__)
     m.activate({},True)
 if __name__=='__main__':main()
+
