@@ -88,6 +88,15 @@ def listeners(ports):
     return selected
 
 
+def public_listeners():
+    ignored={5050,5052,5054,5055,5056}
+    result=set()
+    for line in run('ss','-ltnH').splitlines():
+        fields=line.split()
+        if len(fields)>3 and int(fields[3].rsplit(':',1)[1]) not in ignored:result.add(fields[3])
+    return result
+
+
 def check_other_writers(allow_legacy=True):
     targets={str(DB)+suffix for suffix in ('','-wal','-shm')}
     for process in Path('/proc').iterdir():
@@ -108,6 +117,8 @@ def preflight():
     else:raise RuntimeError('vpn-panel account already exists; review required')
     for name,digest in EXPECTED_SOURCE.items():
         if hashlib.sha256((Path('/opt/vpn-manager')/name).read_bytes()).hexdigest()!=digest:raise RuntimeError('Legacy production source changed')
+    if any(path.is_symlink() or path.stat().st_uid!=0 for path in (DB,DB.parent,PROFILES)):
+        raise RuntimeError('Review ownership of private production state before promotion')
     if not re.search(r'\binet 185\.23\.239\.142/',run('ip','-4','-o','address','show')):raise RuntimeError('Server identity mismatch')
     if (STAGE/'operations/pending.json').exists():raise RuntimeError('Pending staging operation')
     with sqlite3.connect((STAGE/'clients.db').as_uri()+'?mode=ro',uri=True) as con:
@@ -119,6 +130,8 @@ def preflight():
             if Path('/etc/systemd/system',unit).exists():raise RuntimeError('Live unit already exists')
             continue
         if run('systemctl','is-active',unit)!='active':raise RuntimeError('Expected old API is not active')
+        if run('systemctl','show',unit,'-p','User','--value') not in ('','root'):
+            raise RuntimeError('Review non-root legacy API access before permission hardening: '+unit)
         text=run('systemctl','cat',unit)
         if re.search(r'(?im)^Exec\w*=.*\b(awg-quick|wg-quick|xray)\b',text):raise RuntimeError('Legacy API lifecycle includes VPN commands; review required')
         dependencies=run('systemctl','show',unit,'-p','Wants','-p','Requires')
@@ -133,15 +146,15 @@ def preflight():
     if re.search(r'vpn-manager|awg-test',run('systemctl','list-timers','--all','--no-legend')):raise RuntimeError('Review existing VPN timers before promotion')
     for path in (Path('/opt/vpn-manager/app.py'),Path('/opt/vpn-manager/awg_adapter.py'),Path('/opt/vpn-manager-panel-test/server/staging_api.py')):
         if path.exists() and re.search(r'\b(?:awg-quick|wg-quick)\b',path.read_text()):raise RuntimeError('Review lifecycle commands in legacy API before promotion: '+str(path))
-    admin=next((line for line in Path('/etc/vpn-manager-stage.env').read_text().splitlines() if line.startswith('PANEL_ADMIN_CODE=')),None)
-    if not admin or not admin.split('=',1)[1].strip():raise RuntimeError('Existing admin login is not configured')
+    if Path('/root/vpn-manager-live-login-code').exists():raise RuntimeError('A production login file already exists; review before retrying')
     expected=Path('/etc/vpn-manager-stage.requirements.sha256').read_text().strip()
     if FILES.get('server/requirements.txt')!=expected:raise RuntimeError('Reviewed dependency set does not match installed environment')
     if Path('/etc/caddy/vpn-manager-live.caddy').exists():raise RuntimeError('Live HTTP snippet already exists')
     for unit in ('awg-quick@awg-test.service','xray.service'):
         dependencies=run('systemctl','show',unit,'-p','Requires','-p','BindsTo','-p','PartOf')
         if any(old in dependencies for old in OLD):raise RuntimeError('VPN depends on a legacy API unit')
-    return admin
+    if listeners((8444,)):raise RuntimeError('Approved production HTTPS port is already occupied')
+    return True
 
 
 def materialize():
@@ -168,6 +181,7 @@ def baseline(now):
     for row in rows:
         cid=str(row['id']);folder=PROFILES/cid
         if folder.is_symlink() or any(p.is_symlink() for p in folder.rglob('*')):raise RuntimeError('Profile symlink requires review')
+        if folder.stat().st_uid!=os.geteuid() or any(p.stat().st_uid!=os.geteuid() for p in folder.rglob('*')):raise RuntimeError('Review original profile ownership before promotion')
         meta=json.loads((folder/'metadata.json').read_text());key=meta['public_key'];address=meta['address']
         if str(meta['client_id'])!=cid or key not in live or disk.get(key,{}).get('AllowedIPs')!=address+'/32' or meta.get('enabled') is False:raise RuntimeError('Original profile consistency failure')
         if key in keys or address in addresses:raise RuntimeError('Duplicate original mapping')
@@ -189,6 +203,7 @@ After={after}
 User={user}
 WorkingDirectory={CODE if user=='root' else SITE/'server'}
 EnvironmentFile={env}
+Environment=NO_PROXY=127.0.0.1,localhost
 ExecStart={command}
 Restart=on-failure
 RestartSec=3
@@ -231,6 +246,7 @@ def rollback(backup):
     Path('/etc/caddy/vpn-manager-live.caddy').unlink(missing_ok=True)
     run('caddy','validate','--config','/etc/caddy/Caddyfile','--adapter','caddyfile')
     run('caddy','reload','--config','/etc/caddy/Caddyfile','--adapter','caddyfile')
+    if plan.get('ufw_added'):run('ufw','--force','delete','allow','8444/tcp')
     for old in OLD:Path('/etc/systemd/system',old+'.d/live-writer.conf').unlink(missing_ok=True)
     (STATE/'activation.json').unlink(missing_ok=True)
     run('systemctl','daemon-reload')
@@ -240,10 +256,13 @@ def rollback(backup):
     print('LIVE_CODE_ROLLBACK_READY; client databases and VPN configuration were not restored')
 
 
-def activate(materials,admin):
+def activate(materials,checked):
     from awg_persistence import AWGRuntime
-    import route_stage
+    import route_live
     before_config=CONFIG.read_bytes();base,owner,live=baseline(datetime.now(timezone.utc))
+    before_listeners=public_listeners()
+    xray_pid=run('systemctl','show','xray.service','-p','MainPID','--value')
+    if not xray_pid.isdigit() or int(xray_pid)<=0:raise RuntimeError('Xray is not active; review before promotion')
     backup=Path('/root/vpn-manager-backups')/('live-promotion-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ'))
     backup.mkdir(parents=True,mode=0o700)
     caddy=Path('/etc/caddy/Caddyfile');caddy_before=caddy.read_bytes()
@@ -275,8 +294,10 @@ def activate(materials,admin):
     with sqlite3.connect(AUTH/'sessions.db') as con:con.execute('CREATE TABLE panel_sessions(token_hash TEXT PRIMARY KEY,expires_at REAL NOT NULL)')
     os.chmod(AUTH/'sessions.db',0o600);os.chown(AUTH/'sessions.db',account.pw_uid,account.pw_gid)
     token=secrets.token_urlsafe(48)
+    admin_code=secrets.token_urlsafe(36)
+    write('/root/vpn-manager-live-login-code',(admin_code+'\n').encode())
     write('/etc/vpn-manager-live-bridge.env',('PANEL_AWG_TOKEN='+token+'\n').encode())
-    env=admin+'\nVPN_MANAGER_DB='+str(AUTH/'sessions.db')+'\nPANEL_ORIGIN=https://185-23-239-142.sslip.io:8443\nPANEL_AWG_URL=http://127.0.0.1:5055\nPANEL_AWG_TOKEN='+token+'\n'
+    env='PANEL_ADMIN_CODE='+admin_code+'\nVPN_MANAGER_DB='+str(AUTH/'sessions.db')+'\nPANEL_ORIGIN=https://185-23-239-142.sslip.io:8444\nPANEL_AWG_URL=http://127.0.0.1:5055\nPANEL_AWG_TOKEN='+token+'\n'
     write('/etc/vpn-manager-live.env',env.encode())
     definitions={
         NEW[0]:unit('VPN MANAGER frozen production peer controller','/usr/bin/python3 '+str(CODE/'awg_production_server.py'),env='/etc/vpn-manager-live-bridge.env',rw=str(STATE)+' '+str(DB.parent)+' '+str(PROFILES)+' '+str(CONFIG.parent),after='network.target awg-quick@awg-test.service'),
@@ -296,6 +317,10 @@ def activate(materials,admin):
         if CONFIG.read_bytes()!=before_config or after_live!=live or after_base!=base:raise RuntimeError('Original state changed during preparation')
         for path in [DB,*[Path(str(DB)+suffix) for suffix in ('-wal','-shm')]]:
             if path.exists():path.chmod(0o600)
+        DB.parent.chmod(0o700);PROFILES.chmod(0o700)
+        for cid in base['clients']:
+            folder=PROFILES/cid;folder.chmod(0o700)
+            for path in folder.rglob('*'):path.chmod(0o700 if path.is_dir() else 0o600)
         write(STATE/'activation.json',json.dumps(dict(approved=True,original_clients=59,owner_id=owner,release=COMMIT,backup=str(backup))).encode())
         run('systemctl','daemon-reload')
         for old in OLD:run('systemctl','disable',old)
@@ -304,17 +329,25 @@ def activate(materials,admin):
         api=health('http://127.0.0.1:5056/health')
         if not bridge.get('scheduler_ok') or api.get('managed_test_only') is not False or not api.get('profile_delivery'):raise RuntimeError('Production capabilities not verified')
         if CONFIG.read_bytes()!=before_config or AWGRuntime().peers()!=live:raise RuntimeError('Activation changed VPN state')
-        route_stage.SNIPPET=Path('/etc/caddy/vpn-manager-live.caddy')
-        route_stage.IMPORT='    import /etc/caddy/vpn-manager-live.caddy'
-        route_stage.ROUTES='handle_path /panel-live/* {\n root * /opt/vpn-manager-production/public\n file_server\n}\nhandle_path /live-api/* {\n reverse_proxy 127.0.0.1:5056\n}\n'
-        route_stage.main()
+        if shutil.which('ufw'):
+            firewall=run('ufw','status')
+            if re.search(r'(?im)^Status:\s*active',firewall) and not re.search(r'(?m)^8444(?:/tcp)?\s+ALLOW\s+Anywhere',firewall):
+                if re.search(r'(?m)^8444\b',firewall):raise RuntimeError('Review the existing restricted 8444 firewall rule')
+                plan['ufw_added']=True;write(backup/'rollback.json',json.dumps(plan).encode())
+                run('ufw','allow','8444/tcp','comment','VPN_MANAGER_LIVE')
+        route_live.main()
+        health('https://185-23-239-142.sslip.io:8444/live-api/health')
+        after_listeners=public_listeners()
+        if before_listeners-after_listeners or any(not item.endswith(':8444') for item in after_listeners-before_listeners):raise RuntimeError('An unapproved network listener changed')
+        if run('systemctl','show','xray.service','-p','MainPID','--value')!=xray_pid:raise RuntimeError('Xray process changed during activation')
         if CONFIG.read_bytes()!=before_config or AWGRuntime().peers()!=live:raise RuntimeError('Post-routing VPN invariant failed')
     except Exception:
         rollback(backup)
         raise RuntimeError('Activation failed; previous API routing restored. Inspect '+str(backup)) from None
     write(STATE/'rollback-command.txt',('python3 '+str(Path(__file__).resolve())+' --rollback '+str(backup)+'\n').encode())
     print('LIVE_MANAGER_READY; original_clients=59; initial_expiry_holds=5; VPN and Xray were not restarted')
-    print('Panel: https://185-23-239-142.sslip.io:8443/panel-live/')
+    print('Panel: https://185-23-239-142.sslip.io:8444/panel-live/')
+    print('Separate login code is stored privately in /root/vpn-manager-live-login-code; do not paste it into chat or logs')
     print('Code-only rollback: python3 '+str(Path(__file__).resolve())+' --rollback '+str(backup))
 
 
@@ -323,6 +356,8 @@ def main():
     args=parser.parse_args()
     if os.geteuid()!=0:raise SystemExit('Root required')
     os.umask(0o077)
+    os.environ['NO_PROXY']='127.0.0.1,localhost'
+    os.environ['no_proxy']='127.0.0.1,localhost'
     if args.rollback:return rollback(args.rollback)
     admin=preflight();materials=materialize()
     with tempfile.TemporaryDirectory(prefix='vpn-live-source-') as temp:

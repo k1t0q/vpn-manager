@@ -32,16 +32,23 @@ hold permanently. Normal future expiration/reactivation remains automatic.
   writers. An unexpected condition stops promotion for review.
 - Production code/assets are root-owned and frozen outside the staging release
   directory. The live API runs as a new `vpn-panel` user with a separate session
-  database; `vpn-deploy` and its SSH key receive no production access. A fresh
-  loopback bridge token is stored only in private root environment files. The
-  existing administrator login code is reused, never printed.
+  database and frozen Python environment; `vpn-deploy` and its SSH key receive no
+  production access. A fresh bridge token is stored in private root environment
+  files. A separate random production administrator code is stored only in
+  `/root/vpn-manager-live-login-code` and the private production environment. It
+  is never printed by the script or shared with the staging backend.
 - The owner-run script creates WAL-aware backups before and after freezing the
   legacy writers, plus private profile/config/API archives. It never overwrites
   the working SQLite, creates client profiles, or rotates existing keys during
   promotion. It requires unchanged VPN config/runtime peers before and after
-  activation. New Caddy routes preserve all listeners, including Xray port 443.
-- Planned live routes are `/panel-live/` and `/live-api/` on the existing 8443
-  site. The test panel continues through a new read-only snapshot service on
+  activation. New Caddy routes preserve all old listeners and add only TCP 8444.
+  The Xray main PID is checked before/after. An existing restricted 8444 firewall
+  rule requires review; if UFW is active and has no 8444 rule, the approved TCP
+  rule is added and recorded for rollback.
+- Planned live routes are `/panel-live/` and `/live-api/` on a separate HTTPS
+  origin at port 8444. Independent credentials and session storage prevent
+  automatically deployed staging code from inheriting production authority.
+  The test panel remains on 8443 through a new read-only snapshot service on
   loopback 5054. Automatic staging deployments remain isolated from production.
 - The exact code-only rollback command is printed with the private backup path.
   It restores the previous API routing and service state, never restores an old
@@ -57,7 +64,7 @@ are panel alerts and a durable notification outbox. Interface autostart is
 enabled in systemd, but the origin of the currently manually-owned interface
 has not been established and a reboot has not been performed.
 
-Validation: 78 Python tests and 3 JavaScript tests, including legacy ID mapping,
+Validation: 80 Python tests and 3 JavaScript tests, including legacy ID mapping,
 mixed historic owners, exact trial referral deadlines, import crash/replay,
 delivery deduplication, initial expiry holds, irreversible hold consumption,
 scheduler readiness, snapshot write rejection, canonical deletion and code-only

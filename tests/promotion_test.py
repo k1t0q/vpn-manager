@@ -35,6 +35,17 @@ class PromotionTests(unittest.TestCase):
         self.assertIn('After=network.target awg-quick@awg-test.service',text)
         self.assertNotIn('Wants=',text);self.assertNotIn('Requires=',text)
         self.assertNotIn('ExecStart=/usr/bin/awg',text)
+    def test_live_origin_adds_only_8444_even_if_caddy_renumbers_servers(self):
+        import route_live
+        old={'apps':{'http':{'servers':{'srv0':{'listen':[':8443']},'srv1':{'listen':[':80']}}}}}
+        new={'apps':{'http':{'servers':{'srv0':{'listen':[':8444']},'srv1':{'listen':[':8443']},'srv2':{'listen':[':80']}}}}}
+        route_live.verify_listeners(old,new)
+        new['apps']['http']['servers']['srv0']['listen']=[':443']
+        with self.assertRaises(RuntimeError):route_live.verify_listeners(old,new)
+    def test_production_and_preview_origins_are_distinct(self):
+        from route_live import ROUTES
+        self.assertIn('https://185-23-239-142.sslip.io:8444',ROUTES)
+        self.assertNotIn(':443 ',ROUTES)
     def test_unprivileged_production_deletion_uses_canonical_billing_id(self):
         with tempfile.TemporaryDirectory() as folder:
             db=Path(folder)/'sessions.db';sqlite3.connect(db).close()
