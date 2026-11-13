@@ -113,8 +113,7 @@ function render(){
  +(hasWg?'<button data-act="wg-toggle" data-id="'+c.id+'" class="'+(peer?.enabled?'warning':'success-toggle')+'">'+(peer?.enabled?'Отключить':'Включить')+'</button>':'<span></span>')
  +'<button data-act="delete" data-id="'+c.id+'" class="danger">Удалить</button>'
  +(c.referrer_id?'<button data-act="referral" data-id="'+c.id+'" class="secondary referral-action">Бонус рефералу</button>':'')
- +(capabilities.profile_delivery?'<button data-act="delivery" data-id="'+c.id+'" class="secondary referral-action">'+(c.delivered_at?'Передан ✓':'Отметить передачу')+'</button>':'')
- +(Number(connectPilot?.client_id)===Number(c.id)?'<button data-act="connect-copy" data-id="'+c.id+'" class="secondary referral-action">Скопировать ссылку · тест</button><button data-act="connect-rotate" data-id="'+c.id+'" class="secondary">Перевыпустить ссылку</button><button data-act="connect-revoke" data-id="'+c.id+'" class="secondary">Отозвать ссылку</button>':'')
+ +(hasWg&&connectPilot?.all_clients?'<button data-act="connect-copy" data-id="'+c.id+'" class="secondary referral-action">Личный кабинет</button>':'')
  +'</div>';
 };
  const remain=c=>c.period==='lifetime'?'∞':remaining(c)===null?'—':String(remaining(c));
@@ -244,15 +243,18 @@ async function performClientAction(e){
  const btn=e.target.closest('button[data-act]');if(!btn)return;
  const id=Number(btn.dataset.id),c=clients.find(x=>Number(x.id)===id);if(!c)return;
  if(btn.dataset.act.startsWith('connect-')){
-  const action=btn.dataset.act==='connect-copy'?'issue':btn.dataset.act==='connect-rotate'?'rotate':'revoke';
+  const action=btn.dataset.act==='connect-copy'?'issue':btn.dataset.act==='connect-rotate'?'rotate':btn.dataset.act==='connect-reset'?'reset-code':'revoke';
   if(action==='rotate'&&!confirm('Перевыпустить ссылку? Старая ссылка перестанет работать. VPN-профиль сохранится.'))return;
   if(action==='revoke'&&!confirm('Отозвать ссылку? Уже импортированный VPN продолжит работать.'))return;
+  if(action==='reset-code'&&!confirm('Создать новый код доступа? Старый код и сеансы кабинета перестанут работать. VPN-профиль и ссылка сохранятся.'))return;
   btn.disabled=true;
   try{
    const result=await call('/api/connect/clients/'+id+'/link',{method:'POST',body:JSON.stringify({action})});
-   if(action==='revoke'){msg('Ссылка отозвана');return}
-   try{await navigator.clipboard.writeText(result.url);msg('Тестовая персональная ссылка скопирована')}
-   catch{$('connectLinkValue').value=result.url;$('connectLinkDialog').showModal();msg('Скопируйте ссылку в открывшемся окне')}
+   if(action==='revoke'){$('connectLinkValue').value='';$('connectCodeValue').value='';msg('Ссылка отозвана. Для восстановления перевыпустите ссылку.');return}
+   $('connectLinkValue').value=result.url;$('connectCodeValue').value=result.access_code||'';$('connectClientLabel').textContent=result.label||peerLabel(c);
+   $('connectLinkDialog').querySelectorAll('[data-act]').forEach(button=>button.dataset.id=String(id));
+   if(!$('connectLinkDialog').open)$('connectLinkDialog').showModal();
+   msg(action==='reset-code'?'Создан новый код доступа':'Кабинет клиента готов. Скопируйте ссылку и код.');
   }catch(error){msg(error.message,true)}finally{btn.disabled=false}
   return;
  }
@@ -352,10 +354,15 @@ async function performClientAction(e){
 }
 $('rows').addEventListener('click',handleClientAction);
 $('cards').addEventListener('click',handleClientAction);
-$('closeConnectLink').onclick=()=>{$('connectLinkDialog').close();$('connectLinkValue').value=''};
+$('closeConnectLink').onclick=()=>{$('connectLinkDialog').close();$('connectLinkValue').value='';$('connectCodeValue').value=''};
 $('copyConnectLink').onclick=async()=>{
- try{await navigator.clipboard.writeText($('connectLinkValue').value);msg('Ссылка скопирована');$('closeConnectLink').click()}
+ try{await navigator.clipboard.writeText($('connectLinkValue').value);msg('Ссылка скопирована')}
  catch{$('connectLinkValue').select();msg('Нажмите на выделенную ссылку и выберите «Скопировать»')}
+};
+$('connectLinkDialog').addEventListener('click',handleClientAction);
+$('copyConnectCode').onclick=async()=>{
+ try{await navigator.clipboard.writeText($('connectCodeValue').value);msg('Код доступа скопирован')}
+ catch{$('connectCodeValue').focus();$('connectCodeValue').select();msg('Выделенный код можно скопировать вручную')}
 };
 $('closeQr').onclick=()=>$('qrDialog').close();
 $('shareQr').onclick=async()=>{

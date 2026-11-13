@@ -1,0 +1,99 @@
+import hashlib,json,sqlite3,sys,tempfile,time,unittest
+from pathlib import Path
+from urllib.parse import urlsplit
+from unittest.mock import patch
+from types import SimpleNamespace
+from cryptography.fernet import Fernet
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'server'))
+from portal_service import create_app,ORIGIN
+
+class PortalTests(unittest.TestCase):
+ def setUp(self):
+  tmp=tempfile.TemporaryDirectory();self.addCleanup(tmp.cleanup);root=Path(tmp.name)
+  self.state=root/'state';self.material=root/'material';self.state.mkdir();self.material.mkdir()
+  (self.state/'link.key').write_bytes(Fernet.generate_key())
+  self.content=b'[Interface]\nPrivateKey = fixture-only\n[Peer]\nPublicKey = fixture\n'
+  self.entries={str(cid):dict(number=number,period='1m',start_date='2026-01-01',end_date='2099-01-01',enabled=True,sha256=hashlib.sha256(self.content).hexdigest()) for cid,number in [(900,30),(901,82)]}
+  for cid in self.entries:(self.material/(cid+'.conf')).write_bytes(self.content+ (b'' if cid=='900' else b'#other'))
+  self.entries['901']['sha256']=hashlib.sha256((self.material/'901.conf').read_bytes()).hexdigest()
+  self.save();self.config=dict(STATE=str(self.state),MATERIAL=str(self.material),ADMIN_TOKEN='a'*40,TESTING=True)
+  self.app=create_app(self.config);self.client=self.app.test_client();self.admin={'X-Connect-Admin':'a'*40};self.count=0
+ def save(self,offset=0):
+  (self.material/'portal.json').write_text(json.dumps(dict(version=2,updated_at=time.time()+offset,clients=self.entries)))
+ def issue(self,cid=900,action='issue',key=None):
+  self.count+=1
+  return self.client.post('/internal/link',json=dict(client_id=cid,action=action),headers=dict(self.admin,**{'Idempotency-Key':key or 'portal-request-key-'+str(self.count)}))
+ def parts(self,result):
+  p=urlsplit(result['url']);return dict(handle=p.path[1:],token=p.fragment)
+ def post(self,path,parts,**extra):return self.client.post('/api/'+path,json=dict(parts,**extra),headers={'Origin':ORIGIN})
+ def login(self,result=None):
+  result=result or self.issue().json;parts=self.parts(result)
+  self.assertEqual(self.post('login',parts,code=result['access_code']).status_code,200)
+  return result,parts
+ def test_code_required_and_client_isolation(self):
+  a=self.issue().json;b=self.issue(901).json;pa=self.parts(a);pb=self.parts(b)
+  self.assertEqual(self.post('download',pa).status_code,401)
+  self.assertEqual(self.post('login',pa,code=b['access_code']).status_code,401)
+  self.login(a)
+  self.assertEqual(self.post('profile',pa).json['profile']['label'],'CAESAR VPN #30')
+  self.assertEqual(self.post('profile',pb).status_code,401)
+  self.assertEqual(self.post('download',pa).data,self.content)
+  self.assertEqual(self.post('download',dict(pa,token='z'*43)).status_code,401)
+ def test_revocation_rotation_code_reset_invalidate_sessions(self):
+  a,parts=self.login();self.issue(action='revoke')
+  self.assertEqual(self.post('profile',parts).status_code,401)
+  self.assertEqual(self.issue().status_code,409)
+  b=self.issue(action='rotate').json;self.assertNotEqual(a['url'],b['url']);self.assertEqual(a['access_code'],b['access_code'])
+  self.login(b);c=self.issue(action='reset-code').json
+  self.assertEqual(c['url'],b['url']);self.assertNotEqual(c['access_code'],b['access_code'])
+  self.assertEqual(self.post('profile',self.parts(b)).status_code,401)
+  self.assertEqual(self.post('login',self.parts(c),code=b['access_code']).status_code,401)
+  self.login(c)
+ def test_stable_retries_restart_encryption_and_renewal(self):
+  first=self.issue(key='stable-portal-request-1').json
+  self.assertEqual(first,self.issue(key='stable-portal-request-1').json)
+  self.assertEqual(self.issue(action='rotate',key='stable-portal-request-1').status_code,409)
+  self.entries['900']['end_date']='2100-01-01';self.save()
+  self.assertEqual(first,self.issue().json)
+  restarted=create_app(self.config).test_client()
+  r=restarted.post('/internal/link',json=dict(client_id=900,action='issue'),headers=dict(self.admin,**{'Idempotency-Key':'after-restart-portal-request'})).json
+  self.assertEqual(first,r)
+  raw=(self.state/'links.db').read_bytes()
+  self.assertNotIn(first['access_code'].encode(),raw);self.assertNotIn(self.parts(first)['token'].encode(),raw)
+ def test_expired_disabled_lifetime_progress_and_trial(self):
+  a,parts=self.login()
+  self.entries['900']['end_date']='2020-01-01';self.save()
+  info=self.post('profile',parts).json['profile'];self.assertEqual(info['days_left'],0);self.assertEqual(info['progress'],0)
+  self.assertEqual(self.post('download',parts).status_code,403)
+  self.entries['900']['period']='lifetime';self.save()
+  info=self.post('profile',parts).json['profile'];self.assertIsNone(info['days_left']);self.assertIsNone(info['end_date']);self.assertEqual(info['progress'],100)
+  self.entries['900']['enabled']=False;self.save();self.assertEqual(self.post('download',parts).status_code,403)
+  from datetime import datetime,timezone,timedelta
+  self.entries['900'].update(enabled=True,period='trial',start_date=(datetime.now(timezone.utc)-timedelta(hours=23)).isoformat(),end_date=(datetime.now(timezone.utc)+timedelta(hours=1)).isoformat());self.save()
+  info=self.post('profile',parts).json['profile'];self.assertEqual(info['days_left'],1);self.assertTrue(0<info['progress']<5)
+ def test_stale_removed_corrupt_and_qr(self):
+  a,parts=self.login()
+  with patch('portal_service.subprocess.run',return_value=SimpleNamespace(stdout=b'<svg>fixture</svg>')) as run:
+   self.assertEqual(self.post('qr',parts).data,b'<svg>fixture</svg>');self.assertEqual(run.call_args.kwargs['input'],self.content)
+  (self.material/'900.conf').write_bytes(b'corrupt');self.assertEqual(self.post('download',parts).status_code,503)
+  self.save(-151);self.assertEqual(self.post('profile',parts).status_code,503)
+  del self.entries['900'];self.save();self.assertEqual(self.post('profile',parts).status_code,401)
+ def test_lockout_survives_restart_and_session_expiry(self):
+  a=self.issue().json;parts=self.parts(a)
+  for _ in range(5):self.assertEqual(self.post('login',parts,code='wrong').status_code,401)
+  restarted=create_app(self.config).test_client()
+  r=restarted.post('/api/login',json=dict(parts,code=a['access_code']),headers={'Origin':ORIGIN});self.assertEqual(r.status_code,429)
+  with sqlite3.connect(self.state/'links.db') as db:db.execute('UPDATE portal_attempts SET started=0')
+  self.login(a)
+  with sqlite3.connect(self.state/'links.db') as db:db.execute('UPDATE portal_sessions SET expires=0')
+  self.assertEqual(self.post('profile',parts).status_code,401)
+ def test_headers_origin_admin_and_generic_landing(self):
+  a=self.issue().json;parts=self.parts(a);r=self.client.get('/'+parts['handle'])
+  self.assertNotIn(a['access_code'].encode(),r.data);self.assertNotIn(b'fixture-only',r.data);self.assertNotIn(b'CAESAR VPN #30',r.data)
+  self.assertIn('no-store',r.headers['Cache-Control']);self.assertIn('noindex',r.headers['X-Robots-Tag'])
+  self.assertEqual(self.client.get('/internal/status').status_code,401)
+  self.assertEqual(self.client.post('/api/login',json=parts,headers={'Origin':'https://evil.test'}).status_code,403)
+  self.assertEqual(self.issue(999).status_code,404)
+  self.login(a);r=self.post('login',parts,code=a['access_code']);cookie=r.headers['Set-Cookie'];self.assertIn('Secure',cookie);self.assertIn('HttpOnly',cookie);self.assertIn('SameSite=Strict',cookie)
+
+if __name__=='__main__':unittest.main()
