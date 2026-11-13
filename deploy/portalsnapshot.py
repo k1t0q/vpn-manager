@@ -5,7 +5,7 @@ the manager. Missing labels fail closed until refreshed; never guess a number.
 """
 from pathlib import Path
 import fcntl, grp, hashlib, json, os, re, sqlite3, tempfile, time
-from urllib.request import Request, urlopen
+from urllib.request import Request, build_opener, ProxyHandler
 
 ROOT=Path('/var/lib/vpn-manager-connect')
 DB=Path('/opt/vpn-manager/data/clients-staging.db')
@@ -16,7 +16,7 @@ def label_map():
     token=os.environ.get('PANEL_AWG_TOKEN','')
     if len(token)<32:raise ValueError('Reader credential missing')
     req=Request('http://127.0.0.1:5055/api/wg/clients',headers={'X-VPN-Token':token})
-    with urlopen(req,timeout=15) as response:peers=json.load(response)['clients']
+    with build_opener(ProxyHandler({})).open(req,timeout=15) as response:peers=json.load(response)['clients']
     labels={}
     for peer in peers:
         match=re.match(r'^(?:CAESAR|CEASER)\s+BOT\s*#\s*(\d+)(?=\s|$)',str(peer.get('profile_name') or peer.get('name') or '').strip(),re.I)
