@@ -5,7 +5,7 @@ from flask import jsonify,request
 
 BONUS={"1m":14,"1":14,"6m":30,"6":30,"12m":60,"12":60}
 
-def register(app,authorized,db_connect):
+def register(app,authorized,db_connect,managed=None):
     @app.post("/api/referrals/award-safe")
     @authorized
     def award_referral_safe():
@@ -15,6 +15,9 @@ def register(app,authorized,db_connect):
             referred_id=int(d["client_id"])
         except (KeyError,ValueError,TypeError):
             return jsonify(ok=False,error="Invalid client_id"),400
+        if app.config.get('MANAGED_AWG'):
+            # Resolve the recipient through the managed DB, never the old clone.
+            return jsonify(ok=False,error='Use the managed referral route'),409
         try:
             with db_connect() as con:
                 con.execute("BEGIN IMMEDIATE")
@@ -51,3 +54,4 @@ def register(app,authorized,db_connect):
             return jsonify(ok=True,client_id=referred_id,referrer_id=referrer_id,bonus_days=days,new_end_date=new_end,wireguard_unchanged=True)
         except sqlite3.IntegrityError:
             return jsonify(ok=False,error="Referral bonus already awarded"),409
+

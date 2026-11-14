@@ -1,0 +1,54 @@
+name: Incident external connectivity
+on:
+  push:
+    branches: [awg-migration-2026-11]
+    paths: [.github/workflows/incident-connectivity.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Probe public service ports without credentials or configuration changes
+        shell: python
+        run: |
+          import concurrent.futures,json,socket,ssl,urllib.request,time
+          def probe(port):
+              result=dict(port=port,tcp=False)
+              try:
+                  with socket.create_connection(('185.23.239.142',port),timeout=6) as connection:
+                      result['tcp']=True
+                      if port==22:
+                          connection.settimeout(6)
+                          banner=connection.recv(200).decode(errors='replace').splitlines()[0]
+                          result['ssh_banner']=banner if banner.startswith('SSH-') else 'unexpected banner'
+              except OSError as error:
+                  result['error']=type(error).__name__
+              if port in (8443,8444):
+                  path='/panel-live/' if port==8444 else '/'
+                  url='https://185-23-239-142.sslip.io:'+str(port)+path
+                  try:
+                      with urllib.request.urlopen(url,timeout=8,context=ssl.create_default_context()) as response:
+                          result['https_status']=response.status
+                  except urllib.error.HTTPError as error:
+                      result['https_status']=error.code
+                  except Exception as error:
+                      result['https_error']=type(error).__name__
+              return result
+          with concurrent.futures.ThreadPoolExecutor() as pool:
+              results=list(pool.map(probe,[22,443,8443,8444]))
+          # Three harmless invalid datagrams; no credentials or VPN material.
+          with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as udp:
+              for i in range(3):
+                  udp.sendto(b'k1t0-incident-udp-control',('185.23.239.142',51840))
+                  time.sleep(0.2)
+          print('UDP_CONTROL_SENT: 3 datagrams to UDP51840; replies are not expected')
+          api={}
+          for path in ['/live-api/health','/live-api/api/clients']:
+              try:
+                  with urllib.request.urlopen('https://185-23-239-142.sslip.io:8444'+path,timeout=8) as response: api[path]=dict(status=response.status,content_type=response.headers.get('Content-Type'))
+              except urllib.error.HTTPError as error: api[path]=dict(status=error.code,content_type=error.headers.get('Content-Type'))
+              except Exception as error: api[path]=type(error).__name__
+          print(json.dumps(dict(api=api,checked_at_utc=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),services=results),indent=2))

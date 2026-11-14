@@ -1,0 +1,56 @@
+(()=>{
+ 'use strict';
+ const $=id=>document.getElementById(id),handle=location.pathname.slice(1),token=location.hash.slice(1);
+ const valid=/^[A-Za-z0-9_-]{22}$/.test(handle)&&/^[A-Za-z0-9_-]{43}$/.test(token);
+ let profile=null,file=null,qrUrl=null,importUrl=null,importPreparing=false,importExpires=0;
+ const status=text=>{$('status').textContent=text};
+ async function api(path,extra={}){
+  const response=await fetch('/api/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({handle,token,...extra}),cache:'no-store',credentials:'same-origin',referrerPolicy:'no-referrer'});
+  if(!response.ok){const data=await response.json();if(response.status===401){$('account').hidden=true;$('loginPane').hidden=false;file=null;profile=null;importUrl=null}throw Error(data.error||'Не удалось выполнить запрос.')}
+  return response;
+ }
+ function show(data){
+  profile=data;$('loginPane').hidden=true;$('account').hidden=false;$('profileName').textContent=data.label;document.title=data.label+' — личный кабинет';
+  $('days').textContent=data.lifetime?'Навсегда ∞':data.days_left+' дн.';
+  $('end').textContent=data.lifetime?'Без срока':data.end_date?new Date(data.end_date.includes('T')?data.end_date:data.end_date+'T00:00:00+03:00').toLocaleDateString('ru-RU',{timeZone:'Europe/Moscow'}):'Не указана';
+  $('progress').value=data.progress;$('progress').setAttribute('aria-valuetext',data.lifetime?'Без ограничения срока':data.days_left+' дней осталось');
+  $('subscriptionHint').textContent=data.lifetime?'Бессрочная подписка.':data.days_left===0?'Срок подписки истёк. Обратитесь к администратору для продления.':'Продление отобразится здесь автоматически.';
+  $('vpnState').textContent=data.available?'Доступ включён':!data.enabled?'Доступ выключен':'Подписка истекла';
+  for(const id of ['download','qr'])$(id).disabled=!data.available;
+  $('openApp').hidden=!data.import_pilot;$('importHint').hidden=!data.import_pilot;
+  $('openApp').disabled=!data.available||importPreparing;
+  if(data.import_pilot&&data.available&&(!importUrl||Date.now()>=importExpires))prepareClash();
+  status('');
+ }
+ async function busy(button,action){if(button.disabled)return;button.disabled=true;button.setAttribute('aria-busy','true');try{await action()}catch(error){status(error.message)}finally{button.removeAttribute('aria-busy');button.disabled=!profile?.available;if(button.id==='login')button.disabled=false}}
+ $('loginForm').addEventListener('submit',e=>{e.preventDefault();busy($('login'),async()=>{status('Проверяем код…');const data=await(await api('login',{code:$('code').value})).json();$('code').value='';show(data.profile)})});
+ async function getFile(){const response=await api('download');return new File([await response.blob()],profile.label.replaceAll(' ','-')+'.conf',{type:'application/octet-stream'})}
+ $('download').addEventListener('click',()=>busy($('download'),async()=>{status('Получаем профиль…');file=await getFile();const url=URL.createObjectURL(file),a=document.createElement('a');a.href=url;a.download=file.name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);status('Профиль скачан. Импортируйте его в VPN-приложение.')}));
+ $('qr').addEventListener('click',()=>busy($('qr'),async()=>{status('Получаем QR-код…');const response=await api('qr');if(qrUrl)URL.revokeObjectURL(qrUrl);qrUrl=URL.createObjectURL(await response.blob());$('qrImage').src=qrUrl;$('qrTitle').textContent=profile.label;$('qrDialog').showModal();status('')}));
+ $('closeQr').addEventListener('click',()=>{$('qrDialog').close();$('qrImage').removeAttribute('src');if(qrUrl)URL.revokeObjectURL(qrUrl);qrUrl=null});
+ async function prepareClash(){
+  const button=$('openApp');
+  if(!profile?.import_pilot||!profile.available||importPreparing)return;
+  importPreparing=true;button.disabled=true;button.setAttribute('aria-busy','true');
+  try{
+   status('Готовим профиль Clash Mi…');
+   const data=await(await api('clash-import')).json();
+   if(profile?.import_pilot&&profile.available){
+    importUrl=data.url;importExpires=Date.now()+90000;
+    button.textContent='Открыть Clash Mi';status('Профиль готов. Нажмите «Открыть Clash Mi» и подтвердите импорт.');
+   }
+  }catch(error){status(error.message)}
+  finally{importPreparing=false;button.removeAttribute('aria-busy');button.disabled=!profile?.available}
+ }
+ function launch(){
+  status('Открываем Clash Mi. Подтвердите импорт и включите VPN в приложении.');
+  if(!profile?.import_pilot||!profile.available||!importUrl)return;
+  window.location.href=importUrl;importUrl=null;
+  $('openApp').textContent='Открыть в Clash Mi · тест';
+  setTimeout(()=>{if(document.visibilityState==='visible')status('Если Clash Mi не открылся, установите или обновите приложение по ссылке ниже и повторите. Автоматически определить установку браузер не всегда может.')},2500);
+ }
+ $('openApp').addEventListener('click',()=>{if(importUrl&&Date.now()<importExpires)launch();else prepareClash()});
+ $('logout').addEventListener('click',async()=>{await api('logout');file=null;profile=null;importUrl=null;$('account').hidden=true;$('loginPane').hidden=false;document.title='CAESAR VPN — личный кабинет';status('Вы вышли из кабинета.')});
+ if(!valid){$('login').disabled=true;status('Откройте полную персональную ссылку, полученную от администратора.')}else api('profile').then(r=>r.json()).then(data=>show(data.profile)).catch(()=>status('Введите код доступа для входа.'));
+ setInterval(()=>{if(profile&&document.visibilityState==='visible')api('profile').then(r=>r.json()).then(data=>show(data.profile)).catch(error=>status(error.message))},60000);
+})();
