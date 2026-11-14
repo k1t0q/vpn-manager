@@ -39,6 +39,12 @@ jobs:
               return result
           with concurrent.futures.ThreadPoolExecutor() as pool:
               results=list(pool.map(probe,[22,443,8443,8444]))
+          # Three harmless invalid datagrams; no credentials or VPN material.
+          with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as udp:
+              for i in range(3):
+                  udp.sendto(b'k1t0-incident-udp-control',('185.23.239.142',51840))
+                  time.sleep(0.2)
+          print('UDP_CONTROL_SENT: 3 datagrams to UDP51840; replies are not expected')
           api={}
           for path in ['/live-api/health','/live-api/api/clients']:
               try:
