@@ -80,19 +80,23 @@ print('AWG boot recovery rolled back; existing database and profile files retain
  compile(rollback.read_text(),str(rollback),'exec')
  timer='vpn-awg-boot-rollback-'+root.name.rsplit('-',1)[-1].lower()
  run(['systemd-run','--unit='+timer,'--on-active=180s','/usr/bin/python3',str(rollback)])
+ phase='install_startup'
  try:
   HELPER.parent.mkdir(parents=True,exist_ok=True);write(HELPER,code)
   DROP.parent.mkdir(parents=True,exist_ok=True)
-  override=b'[Unit]\nWants=network-online.target\nAfter=network-online.target docker.service\n[Service]\nExecStart=\nExecStart=/usr/bin/awg-quick up /etc/amnezia/amneziawg/awg-test.conf\nExecStop=\nExecStop=/usr/bin/awg-quick down /etc/amnezia/amneziawg/awg-test.conf\nExecStartPost=/usr/bin/python3 /usr/local/libexec/vpn-manager-awg-network.py\n'
+  override=b'[Unit]\nWants=network-online.target\nAfter=network-online.target docker.service\n[Service]\nExecStartPre=/usr/sbin/modprobe amneziawg\nExecStart=\nExecStart=/usr/bin/awg-quick up /etc/amnezia/amneziawg/awg-test.conf\nExecStop=\nExecStop=/usr/bin/awg-quick down /etc/amnezia/amneziawg/awg-test.conf\nExecStartPost=/usr/bin/python3 /usr/local/libexec/vpn-manager-awg-network.py\n'
   write(DROP,override);run(['systemctl','daemon-reload'])
+  phase='start_interface'
   result=run(['systemctl','start',UNIT],False)
   (root/'start.stdout').write_text(result.stdout);(root/'start.stderr').write_text(result.stderr)
   assert result.returncode==0 and Path('/sys/class/net/awg-test').exists()
+  phase='verify_runtime'
   active=parts(run(['awg','showconf','awg-test']).stdout)
   assert active[0]['PrivateKey']==expected[0]['PrivateKey']
   assert {x['PublicKey'] for x in active[1:]}=={x['PublicKey'] for x in expected[1:]}
   for key in ['ListenPort','S1','S2','H1','H2','H3','H4']:assert active[0].get(key)==expected[0].get(key)
   assert all(run(iptables(rule,'-C'),False).returncode==0 for rule in RULES)
+  phase='verify_preservation'
   assert CONFIG.read_bytes()==config
   assert all(hashlib.sha256(Path(p).read_bytes()).hexdigest()==h for p,h in profiles.items())
   assert run(['systemctl','show','xray.service','-p','MainPID','--value']).stdout==before_xray
@@ -100,7 +104,8 @@ print('AWG boot recovery rolled back; existing database and profile files retain
   run(['systemctl','enable',UNIT]);assert run(['systemctl','is-enabled',UNIT]).stdout.strip()=='enabled'
   run(['systemctl','stop',timer+'.timer'])
   print(json.dumps(dict(ok=True,interface='awg-test',restored_existing_peers=len(active)-1,boot_enabled=True,forwarding_and_nat_verified=True,profiles_and_keys_unchanged=True,xray_untouched=True,backup=str(root),rollback=str(rollback))))
- except Exception:
+ except Exception as error:
+  (root/'failure-phase.json').write_text(json.dumps(dict(phase=phase,error=type(error).__name__)))
   run(['python3',str(rollback)],False);run(['systemctl','stop',timer+'.timer'],False)
   raise SystemExit('AWG recovery stopped and scoped changes rolled back; protected backup: '+str(root)) from None
 if __name__=='__main__':
