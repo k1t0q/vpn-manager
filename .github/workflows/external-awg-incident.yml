@@ -1,0 +1,39 @@
+name: One-use external AWG incident test
+on:
+  push:
+    branches: [incident-external-20261114]
+    paths: [.github/workflows/external-awg-incident.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  external-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.12'
+          cache: false
+      - name: Build official userspace AWG client and tools
+        run: |
+          git clone --quiet https://github.com/amnezia-vpn/amneziawg-go.git /tmp/awg-go
+          git -C /tmp/awg-go checkout --quiet b5928efb6ca19f0153958460c3d141f04abc5c2e
+          cd /tmp/awg-go
+          go mod verify
+          go build -o /tmp/awg-go/amneziawg-go .
+          git clone --quiet --depth 1 --branch v3.1.20260812 https://github.com/amnezia-vpn/amneziawg-tools.git /tmp/awg-tools
+          make -C /tmp/awg-tools/src -j2
+          python -m pip install cryptography
+      - name: Run external encrypted-parameter diagnostic
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python_path="$(command -v python)"
+          sudo --preserve-env=GITHUB_TOKEN,GITHUB_REPOSITORY,GITHUB_REF_NAME,GITHUB_RUN_ID,RUNNER_TEMP "$python_path" deploy/external_awg_client.py
