@@ -62,7 +62,7 @@ try:
    if re.fullmatch(r'Jc|Jmin|Jmax|S[1-4]|H[1-4]|I[1-5]',k,re.I):settings.append(k+' = '+v)
  serverpub=run('awg','show','awg-test','public-key').stdout.strip()
  client=backup/'temporary-client.conf'
- client.write_text('[Interface]\nPrivateKey = '+priv+'\n'+'\n'.join(settings)+'\n[Peer]\nPublicKey = '+serverpub+'\nPresharedKey = '+psk+'\nEndpoint = 127.0.0.1:51840\nAllowedIPs = 10.10.0.1/32\n')
+ client.write_text('[Interface]\nPrivateKey = '+priv+'\n'+'\n'.join(settings)+'\n[Peer]\nPublicKey = '+serverpub+'\nPresharedKey = '+psk+'\nEndpoint = 127.0.0.1:51840\nAllowedIPs = 0.0.0.0/0\n')
  run('ip','netns','add',ns)
  run('ip','link','add',dev,'type','amneziawg')
  run('awg','setconf',dev,str(client))
@@ -70,7 +70,7 @@ try:
  run('ip','-n',ns,'link','set','lo','up')
  run('ip','-n',ns,'address','add',address+'/32','dev',dev)
  run('ip','-n',ns,'link','set',dev,'up')
- run('ip','-n',ns,'route','add','10.10.0.1/32','dev',dev)
+ run('ip','-n',ns,'route','add','default','dev',dev)
  run('awg','addconf','awg-test',str(peer))
  stage='ping_production_tunnel'
  r=run('ip','netns','exec',ns,'ping','-n','-c','3','-W','2','10.10.0.1',check=False)
@@ -79,6 +79,13 @@ try:
  result['production_handshake_ok']=any(int(l.split()[-1])>0 for l in out.splitlines())
  out=run('ip','netns','exec',ns,'awg','show',dev,'transfer').stdout
  result['test_transfer_bytes']=[list(map(int,l.split()[1:])) for l in out.splitlines()]
+ stage='test_production_internet_forwarding'
+ r=run('ip','netns','exec',ns,'ping','-n','-c','2','-W','2','1.1.1.1',check=False)
+ result['production_internet_ping_ok']=r.returncode==0
+ probe="import urllib.request,json;op=urllib.request.build_opener(urllib.request.ProxyHandler({}));r=op.open('https://1.1.1.1/cdn-cgi/trace',timeout=7);d=dict(x.split('=',1) for x in r.read().decode().splitlines() if '=' in x);print(json.dumps(dict(https_status=r.status,egress_matches_vps=d.get('ip')=='185.23.239.142')))"
+ r=run('ip','netns','exec',ns,'/usr/bin/python3','-c',probe,check=False)
+ result['production_https_egress']=json.loads(r.stdout) if r.returncode==0 else {'error':'HTTPS check failed'}
+
 except Exception as e:result.update(error_class=type(e).__name__,failed_stage=stage)
 finally:
  run('/usr/bin/python3',str(cleanup),check=False)
