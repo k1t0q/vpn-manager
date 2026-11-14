@@ -36,4 +36,4 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           python_path="$(command -v python)"
-          sudo --preserve-env=GITHUB_TOKEN,GITHUB_REPOSITORY,GITHUB_REF_NAME,GITHUB_RUN_ID,RUNNER_TEMP "$python_path" deploy/external_awg_client.py
+          sudo --preserve-env=GITHUB_TOKEN,GITHUB_REPOSITORY,GITHUB_REF_NAME,GITHUB_RUN_ID,RUNNER_TEMP "$python_path" -I deploy/external_awg_client.py
