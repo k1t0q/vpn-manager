@@ -21,7 +21,7 @@ def main():
  if old.exists():shutil.copy2(old,root/'previous-kernel-module.ko')
  print(json.dumps(dict(phase='building',kernel=kernel,backup=str(root))),flush=True)
  with (root/'build.log').open('w') as log:
-  result=subprocess.run(['make','-C',str(stage),'-j2','KERNELRELEASE='+kernel],stdout=log,stderr=subprocess.STDOUT,timeout=300)
+  result=subprocess.run(['make','-C',str(stage),'-j2','KERNELDIR=/lib/modules/'+kernel+'/build'],stdout=log,stderr=subprocess.STDOUT,timeout=300)
  if result.returncode:
   print(json.dumps(dict(ok=False,phase='build_failed',tail=(root/'build.log').read_text(errors='replace').splitlines()[-12:],log=str(root/'build.log'))));return
  module=stage/'amneziawg.ko';assert module.exists()
