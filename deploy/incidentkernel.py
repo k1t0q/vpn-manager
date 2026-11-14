@@ -35,4 +35,4 @@ d['kernel_problem_lines']=[l[:220] for l in out.splitlines() if re.search(r'amne
 # Only interface structural fields, no per-peer keys or endpoints.
 for k in ['interface','link_eth0','link_lo']:
  d[k]=[{a:b for a,b in x.items() if a in ['ifname','flags','mtu','operstate','linkinfo','xdp']} for x in d[k]]
-print(json.dumps(d,indent=2))
+print(json.dumps({k:d[k] for k in ['kernel','interface','udp_sockets','namespaces','module_versions','input','output','legacy','nft_hooks','udp_counters']},separators=(',',':')))
