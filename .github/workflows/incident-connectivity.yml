@@ -40,7 +40,7 @@ jobs:
           with concurrent.futures.ThreadPoolExecutor() as pool:
               results=list(pool.map(probe,[22,443,8443,8444]))
           api={}
-          for path in ['/live-api/health','/live-api/clients']:
+          for path in ['/live-api/health','/live-api/api/clients']:
               try:
                   with urllib.request.urlopen('https://185-23-239-142.sslip.io:8444'+path,timeout=8) as response: api[path]=dict(status=response.status,content_type=response.headers.get('Content-Type'))
               except urllib.error.HTTPError as error: api[path]=dict(status=error.code,content_type=error.headers.get('Content-Type'))
