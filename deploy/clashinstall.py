@@ -20,6 +20,18 @@ def write(p,b,mode=0o644):
 def backup_db(p,target):
  with sqlite3.connect(target) as dest:
   with sqlite3.connect(p.as_uri()+'?mode=ro',uri=True) as src:src.backup(dest)
+def comparable(value):
+ # Caddy adds the source Caddyfile to file_server.hide. Its adapter emits
+ # this set in non-deterministic order; only normalize that documented field.
+ value=json.loads(json.dumps(value))
+ def walk(item):
+  if isinstance(item,dict):
+   if item.get('handler')=='file_server' and isinstance(item.get('hide'),list):
+    item['hide']=sorted('/etc/caddy/Caddyfile' if x=='/etc/caddy/clash-candidate.caddy' else x for x in item['hide'])
+   for child in item.values():walk(child)
+  elif isinstance(item,list):
+   for child in item:walk(child)
+ walk(value);return value
 def main():
  if os.geteuid()!=0:raise RuntimeError('Root required')
  os.umask(0o077)
@@ -49,7 +61,7 @@ def main():
  try:
   after=json.loads(run('caddy','adapt','--config',str(candidate),'--adapter','caddyfile'))
   logging=after.pop('logging');assert 'ticket' in json.dumps(logging) and 'REDACTED' in json.dumps(logging)
-  assert after==adapted
+  assert comparable(after)==comparable(adapted)
   run('caddy','validate','--config',str(candidate),'--adapter','caddyfile')
  finally:candidate.unlink(missing_ok=True)
  backup=Path('/root/vpn-manager-backups')/('clash-mi-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ'));backup.mkdir(mode=0o700)
@@ -81,7 +93,7 @@ def main():
   for target,b in data.items():write(Path(target),b)
   write(CADDY,caddynew);run('systemctl','reload','caddy.service')
   active=json.loads(request('http://127.0.0.1:2019/config/'))
-  assert active['apps']==adapted['apps'] and 'ticket' in json.dumps(active.get('logging',{}))
+  assert comparable(active['apps'])==comparable(adapted['apps']) and 'ticket' in json.dumps(active.get('logging',{}))
   write(ENV,b'[Service]\nEnvironment=CONNECT_CLASH_PILOT=1\n')
   run('systemctl','daemon-reload');run('systemctl','restart','vpn-manager-connect.service')
   admin=Path('/etc/vpn-manager-connect-admin.env').read_text().strip().split('=',1)[1]
