@@ -1,2 +1,14 @@
-self.addEventListener("push",event=>{let data={};try{data=event.data?event.data.json():{}}catch{data={body:event.data?event.data.text():""}}const title=data.title||"VPN MANAGER k1t0";const options={body:data.body||"Новое уведомление",tag:data.tag||"vpn-manager",data:{url:data.url||"/vpn-manager/"}};event.waitUntil(self.registration.showNotification(title,options))});
-self.addEventListener("notificationclick",event=>{event.notification.close();const url=event.notification.data?.url||"/vpn-manager/";event.waitUntil(clients.matchAll({type:"window",includeUncontrolled:true}).then(list=>{for(const c of list){if("focus" in c){c.navigate(url);return c.focus()}}return clients.openWindow?clients.openWindow(url):undefined}))});
+self.addEventListener('install',()=>self.skipWaiting());
+self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
+self.addEventListener('push',event=>{
+ let data={};try{data=event.data?event.data.json():{}}catch{}
+ event.waitUntil(self.registration.showNotification(data.title||'VPN MANAGER',{body:data.body||'Проверьте сроки подписок в панели.',tag:data.tag||'vpn-manager',data:{url:self.registration.scope}}));
+});
+self.addEventListener('notificationclick',event=>{
+ event.notification.close();
+ const url=self.registration.scope;
+ event.waitUntil(self.clients.matchAll({type:'window',includeUncontrolled:true}).then(async list=>{
+  for(const client of list){if(client.url.startsWith(url)&&'focus' in client)return client.focus()}
+  return self.clients.openWindow(url);
+ }));
+});

@@ -1,71 +1,70 @@
-# VPN MANAGER k1t0 — GitHub Pages + Supabase
+# VPN MANAGER k1t0 — SQLite / AmneziaWG
 
-Готовая статическая версия: сайт лежит на GitHub Pages, клиенты сохраняются в Supabase и доступны с телефона/ПК.
+The original desktop/mobile panel uses `sqlite-manager.js` and `styles.css`.
+`config.js` contains only the public HTTPS API URL. No external database service is required.
 
-## 1. Supabase
-1. Создай проект на Supabase.
-2. Открой SQL Editor -> New query.
-3. Вставь весь файл `supabase_setup.sql` и нажми Run.
-4. Открой Authentication -> Users -> Add user -> Create new user.
-5. Создай свой email + сложный пароль. Регистрации с сайта специально нет.
+## Isolated backend
 
-## 2. config.js
-В Supabase открой Project Settings -> API и возьми:
-- Project URL
-- anon/public key
+`server/staging_api.py` is a **new panel service**, not a replacement for the running
+5-awg service on the VPS. It reads the existing SQLite schema and proxies explicit
+AWG actions to that service. Never overwrite `/opt/vpn-manager/app.py` with the
+repository launcher: the running VPS app contains the working AWG implementation.
 
-Вставь их в `config.js`.
+Install this branch into a separate directory and run, for example:
 
-Важно: используй только anon/public key. НЕ вставляй service_role key.
+```sh
+python -m venv .venv
+.venv/bin/pip install -r server/requirements.txt
+.venv/bin/gunicorn --workers 1 --bind 127.0.0.1:5052 --chdir server staging_api:app
+```
 
-## 3. GitHub
-1. Создай репозиторий `vpn-manager`.
-2. Загрузи в корень все файлы из архива.
-3. Settings -> Pages.
-4. Source: Deploy from a branch.
-5. Branch: main, folder: / (root), Save.
-6. GitHub выдаст адрес вида `https://ТВОЙ_НИК.github.io/vpn-manager/`.
+Set these server-only environment variables using a protected environment file:
 
-## Что уже есть
-- Облачное хранение клиентов.
-- Авторизация Supabase.
-- RLS: каждый аккаунт видит только свои записи.
-- Имя, телефон, дата начала, заметка.
-- Автоматический конец подписки.
-- Поиск.
-- Статусы и остаток дней.
-- Продление: 14 дней / 1 / 2 / 6 / 12 месяцев.
-- Редактирование и удаление.
-- Нормальная мобильная версия.
-- Исправленное поле даты на телефоне.
+- `VPN_MANAGER_DB`: absolute SQLite path. First use a SQLite backup copy, never a file copy of an active WAL database.
+- `PANEL_ADMIN_CODE`: new long random admin login code.
+- `PANEL_AWG_URL`: actual loopback address/port of the existing 5-awg service. The default is only a placeholder and must be verified.
+- `PANEL_AWG_TOKEN`: existing server API token, sent upstream as `X-VPN-Token`.
+- `PANEL_ORIGIN`: `https://k1t0q.github.io`.
 
-Если подписка активна, продление идёт от текущей даты окончания. Если истекла — от сегодняшней даты.
+The panel needs write permission to the selected DB and its directory. No tables or
+profiles are changed on import/startup. A separate `panel_sessions` table is created
+on first successful login; only SHA-256 session hashes are persisted. Sessions expire
+after 12 hours. The browser stores its session in sessionStorage, never the upstream token.
+One Gunicorn worker is required for the in-process login rate limit.
 
+## Route ownership
 
-## v2
-- Тариф «Пробный — 24 часа».
-- Пробные 24 часа доступны и в продлении.
-- В «Изменить» добавлено поле «Осталось дней».
-- При сохранении дата окончания пересчитывается от текущей даты.
+`staging_api.py` owns auth, client listing, CORS and the AWG proxy.
+`sqlite_client_crud.py` owns create, PATCH, renewal, history and guarded deletion.
+`sqlite_referral_safe.py` owns idempotent manual bonuses.
+`sqlite_wg_link.py` verifies the profile against the AWG list before linking it.
+Do not register `sqlite_client_edit.py` or `sqlite_client_delete.py` alongside these:
+the former duplicates PATCH and the latter calls obsolete wg-easy endpoints.
 
-## v3 TRIAL FIX
-- Исправлен пробный тариф: ровно 1 день (24 часа по логике календарного срока сайта).
-- Убран fallback, который мог превращать неизвестный тариф в 1 месяц.
-- Добавлено версионирование `app.js?v=3` и `styles.css?v=3`, чтобы браузер не использовал старый кеш после обновления GitHub Pages.
+## Remaining live-server gates
 
+SSH was unreachable from the implementation environment. Actual server modules,
+schema, AWG identifier format and response bodies have not been inspected. The HTTP
+API responds 401 without credentials. Local tests use synthetic clients and mocked
+AWG responses; they do not establish that the 59 real profiles are correctly linked.
 
-## v4 REFERRAL
-- В добавлении клиента появилось поле `Кто пригласил`.
-- Список формируется из уже существующих клиентов.
-- Бонус пригласившему начисляется автоматически:
-  - 1 месяц -> +14 дней
-  - 6 месяцев -> +30 дней
-  - 12 месяцев -> +60 дней
-- Для пробного тарифа, 14 дней и 2 месяцев бонус не начисляется.
-- Если подписка пригласившего активна, бонус добавляется к текущей дате окончания.
-- Если подписка пригласившего истекла, бонус считается от сегодняшней даты.
-- История `кто пригласил` сохраняется у нового клиента.
+Before routing traffic to the panel service:
 
-### ВАЖНО при обновлении существующей базы
-Перед загрузкой новой версии сайта выполни в Supabase SQL Editor файл:
-`supabase_v4_referral_migration.sql`
+1. Inspect the actual 5-awg routes, loopback port, schema and peer identifiers without printing secrets. Compare each SQLite link with the existing AWG list. Do not regenerate IDs or keys.
+2. Run against a backup SQLite database and the running AWG read endpoints; verify all 59 clients, history, names, dates and QR/config formats. Creating a test profile is an explicit write, not part of a read-only smoke check.
+3. Test create/link/renew/referral with one disposable test client. Creation remains a multi-step operation: if a response is lost, inspect the existing client/profile before retrying. No automatic rollback deletes VPN profiles.
+4. Linked-client deletion is deliberately blocked with HTTP 409. Implement and test an AWG-aware deletion adapter before enabling it. Unlinked test records can be deleted.
+5. Only after these checks, point the existing **8443** Caddy API handler to the panel on 5052. Preserve the old target for rollback. Do not edit the 443 listener, Xray service or AWG configuration.
+6. Test the preview frontend against 8443, then prepare/merge PR #1. This branch has not been deployed or merged.
+
+No expiry scheduler exists in this panel; changing subscription dates never enables
+or disables VPN. Audit existing VPS timers separately before claiming automatic
+disabling is absent from the whole host.
+
+## Checks
+
+```sh
+python -m unittest discover -s tests -p '*_test.py' -v
+node --test tests/recovery.test.mjs
+node --check sqlite-manager.js
+```

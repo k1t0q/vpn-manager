@@ -4,6 +4,7 @@ register_link(app, authorized, db_connect)
 """
 import re
 import sqlite3
+import requests
 from flask import jsonify, request
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
@@ -18,6 +19,16 @@ def register(app, authorized, db_connect):
         if not isinstance(wg_id, str) or not _ID.fullmatch(wg_id):
             return jsonify(ok=False, error="Invalid WireGuard ID"), 400
         try:
+            if not app.config.get("AWG_TOKEN"):
+                return jsonify(ok=False,error="AWG bridge not configured"),503
+            try:
+                response=requests.get(app.config["AWG_URL"].rstrip("/")+"/api/wg/clients",headers={"X-VPN-Token":app.config["AWG_TOKEN"]},timeout=15)
+                response.raise_for_status()
+                peers=response.json()["clients"]
+                if not any(str(p.get("id"))==wg_id for p in peers):
+                    return jsonify(ok=False,error="AWG profile not found; no linkage changed"),409
+            except (requests.RequestException,ValueError,KeyError,TypeError):
+                return jsonify(ok=False,error="Unable to verify AWG profile"),503
             with db_connect() as con:
                 con.execute("BEGIN IMMEDIATE")
                 row = con.execute("SELECT id,wg_client_id,user_id FROM clients WHERE id=?", (client_id,)).fetchone()

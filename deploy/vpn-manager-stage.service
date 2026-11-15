@@ -1,0 +1,30 @@
+[Unit]
+Description=VPN MANAGER isolated staging panel
+After=network.target
+
+[Service]
+User=vpn-deploy
+Group=vpn-deploy
+WorkingDirectory=/srv/vpn-manager-stage/current/server
+EnvironmentFile=/etc/vpn-manager-stage.env
+ExecStart=/opt/vpn-manager-stage-venv/bin/gunicorn --workers 1 --bind 127.0.0.1:5053 staging_api:app
+Restart=on-failure
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+CapabilityBoundingSet=
+ReadWritePaths=/srv/vpn-manager-stage
+InaccessiblePaths=-/opt/vpn-manager -/opt/vpn-manager-panel-test -/etc/amnezia -/etc/wireguard -/etc/caddy
+
+[Install]
+WantedBy=multi-user.target
