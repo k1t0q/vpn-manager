@@ -1,0 +1,37 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "listen": "0.0.0.0",
+      "port": 8445,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "b439edd9-7013-4900-a32b-f7069ac4c69a"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "tls",
+        "tlsSettings": {
+          "certificates": [
+            {
+              "certificateFile": "/etc/letsencrypt/live/vpn.caesarbot.ru/fullchain.pem",
+              "keyFile": "/etc/letsencrypt/live/vpn.caesarbot.ru/privkey.pem"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "freedom"
+    }
+  ]
+}
