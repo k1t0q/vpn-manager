@@ -148,7 +148,9 @@ def find_inbound(config: dict, tag: str = "vless-ws") -> dict:
         "vless", "127.0.0.1", 10000
     ):
         raise MigrationError("Unexpected VLESS inbound; refusing production changes")
-    if (stream.get("network"), stream.get("security")) != ("ws", "none"):
+    # Xray defaults an omitted/null security field to "none". Caddy is the
+    # TLS terminator, so both the omitted and explicit forms are valid here.
+    if (stream.get("network"), stream.get("security") or "none") != ("ws", "none"):
         raise MigrationError("Unexpected transport/security; refusing production changes")
     clients = inbound.get("settings", {}).get("clients")
     if not isinstance(clients, list):
