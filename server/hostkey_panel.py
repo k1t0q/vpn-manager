@@ -216,7 +216,7 @@ class Panel:
         headers = [("Content-Type", content_type), ("Content-Length", str(len(body))),
                    ("Cache-Control", "no-store, private"), ("Referrer-Policy", "no-referrer"),
                    ("X-Content-Type-Options", "nosniff"), ("X-Frame-Options", "DENY"),
-                   ("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'")]
+                   ("Content-Security-Policy", "default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'")]
         start_response(status, headers)
         return [body]
 
