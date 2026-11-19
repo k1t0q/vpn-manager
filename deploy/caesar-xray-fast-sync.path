@@ -1,0 +1,9 @@
+[Unit]
+Description=Promptly reconcile CAESAR VPN keys after an administrator action
+
+[Path]
+PathChanged=/var/lib/caesar-manager/fast-sync.signal
+Unit=caesar-xray-expiry.service
+
+[Install]
+WantedBy=multi-user.target
