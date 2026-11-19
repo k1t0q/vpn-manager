@@ -75,6 +75,7 @@ class SubscriptionTests(unittest.TestCase):
         self.assertIn(b"incy://import/https://", result["body"])
         self.assertIn("Ваши устройства".encode(), result["body"])
         self.assertIn("Ваш номер клиента: <strong>№1</strong>".encode(), result["body"])
+        self.assertNotIn("Ваше персональное подключение".encode(), result["body"])
         self.assertIn("2 из 2 доступны".encode(), result["body"])
         self.assertIn(b"https://apps.apple.com/ru/app/uxway/id6762559624", result["body"])
         self.assertIn(b"https://github.com/INCY-DEV/incy-platforms/releases/download/latest/incy-windows-setup.exe", result["body"])
