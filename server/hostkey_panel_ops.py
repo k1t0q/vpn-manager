@@ -17,12 +17,13 @@ from pathlib import Path
 import re
 import secrets
 import sqlite3
+import stat
 import uuid
 
 try:
-    from .xray_hostkey import MOSCOW, init_tables
+    from .xray_hostkey import MOSCOW, init_tables, active_subscription
 except ImportError:
-    from xray_hostkey import MOSCOW, init_tables
+    from xray_hostkey import MOSCOW, init_tables, active_subscription
 
 
 PERIOD_MONTHS = {'1m': 1, '6m': 6, '12m': 12}
@@ -62,11 +63,13 @@ def safe_date(value: str) -> date:
 
 class PanelOperations:
     def __init__(self, db_path: Path, pilot_ids: frozenset[int] = frozenset(),
-                 allow_all: bool = False, backup_dir: Path | None = None):
+                 allow_all: bool = False, backup_dir: Path | None = None,
+                 sync_signal_path: Path | None = None):
         self.db_path = db_path
         self.pilot_ids = pilot_ids
         self.allow_all = allow_all
         self.backup_dir = backup_dir or db_path.parent / 'panel-backups'
+        self.sync_signal_path = sync_signal_path
 
     @classmethod
     def from_environment(cls, db_path: Path) -> 'PanelOperations':
@@ -76,10 +79,14 @@ class PanelOperations:
         mode = os.environ.get('CAESAR_PANEL_MODE', 'pilot').strip()
         if mode not in ('pilot', 'full'):
             raise RuntimeError('Invalid CAESAR_PANEL_MODE')
+        signal = os.environ.get('CAESAR_XRAY_FAST_SYNC_SIGNAL', '').strip()
+        if signal and signal != '/var/lib/caesar-manager/fast-sync.signal':
+            raise RuntimeError('Unexpected CAESAR_XRAY_FAST_SYNC_SIGNAL')
         # Full mode can only be enabled via root's guarded deployment script,
         # which writes the protected EnvironmentFile after verifying Xray/DB.
         return cls(db_path, frozenset(int(value) for value in raw.split(',') if value),
-                   allow_all=(mode == 'full'))
+                   allow_all=(mode == 'full'),
+                   sync_signal_path=Path(signal) if mode == 'full' and signal else None)
 
     @property
     def enabled(self) -> bool:
@@ -134,7 +141,7 @@ class PanelOperations:
             raise OperationError('Actions are still in read-only mode', 403)
         if not isinstance(data, dict) or not REQUEST_ID_RE.fullmatch(request_id):
             raise OperationError('Invalid request')
-        if action not in {'create', 'edit', 'extend', 'toggle', 'provision', 'archive', 'restore'}:
+        if action not in {'create', 'edit', 'extend', 'toggle', 'access', 'provision', 'archive', 'restore'}:
             raise OperationError('Unknown operation', 404)
         if action == 'create' and client_id is not None:
             raise OperationError('Unexpected client ID')
@@ -184,7 +191,20 @@ class PanelOperations:
                 response = self._change(con, row, action, data)
             con.execute('''INSERT INTO caesar_panel_operations(request_id,request_hash,result)
                            VALUES(?,?,?)''', (request_id, digest, json.dumps(response, ensure_ascii=False)))
-            return response
+        # Signal only after SQLite commits. A separate root-owned systemd
+        # service reconciles Xray; the web process never runs as root.
+        if response.get('sync_pending') and self.sync_signal_path:
+            try:
+                fd = os.open(self.sync_signal_path, os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW)
+                with os.fdopen(fd, 'w', encoding='ascii') as signal:
+                    if not stat.S_ISREG(os.fstat(signal.fileno()).st_mode):
+                        raise OSError('Fast-sync trigger is not a regular file')
+                    signal.write(f'{datetime.now(MOSCOW).isoformat()}\n')
+                response['fast_sync_requested'] = True
+            except OSError:
+                # The five-minute timer remains a safe fallback.
+                response['fast_sync_requested'] = False
+        return response
 
     def _create(self, con: sqlite3.Connection, data: dict) -> dict:
         if set(data) - {'name', 'phone', 'start_date', 'period', 'referrer_id'}:
@@ -268,6 +288,8 @@ class PanelOperations:
         elif action == 'toggle':
             if set(data) != {'kind', 'enabled'} or data['kind'] not in KINDS or type(data['enabled']) is not bool:
                 raise OperationError('Choose phone/pc and true/false')
+            if data['enabled'] and not active_subscription(row['period'], row['end_date']):
+                raise OperationError('First extend the expired subscription', 409)
             cursor = con.execute('''UPDATE caesar_vless_devices SET manually_enabled=?
                                     WHERE client_id=? AND kind=?''',
                                  (int(data['enabled']), client_id, data['kind']))
@@ -275,6 +297,19 @@ class PanelOperations:
                 raise OperationError('Issue two keys before changing device access', 409)
             self.history(con, row, 'device_access',
                          f'HOSTKEY {data["kind"]} {"enabled" if data["enabled"] else "disabled"}')
+        elif action == 'access':
+            if set(data) != {'enabled'} or type(data['enabled']) is not bool:
+                raise OperationError('Choose whether VPN access is enabled')
+            present = {kind for (kind,) in con.execute(
+                'SELECT kind FROM caesar_vless_devices WHERE client_id=?', (client_id,))}
+            if present != set(KINDS):
+                raise OperationError('Issue two device keys before changing client access', 409)
+            if data['enabled'] and not active_subscription(row['period'], row['end_date']):
+                raise OperationError('First extend the expired subscription', 409)
+            con.execute('UPDATE caesar_vless_devices SET manually_enabled=? WHERE client_id=?',
+                        (int(data['enabled']), client_id))
+            self.history(con, row, 'client_access',
+                         f'HOSTKEY both devices {"enabled" if data["enabled"] else "blocked"}')
         elif action == 'provision':
             if data:
                 raise OperationError('Provision takes no fields')
@@ -296,7 +331,7 @@ class PanelOperations:
                 raise OperationError('Restore takes no fields')
             con.execute('DELETE FROM caesar_client_archives WHERE client_id=?', (client_id,))
             self.history(con, row, 'restored', 'HOSTKEY account restored; devices remain disabled pending review')
-        return {'ok': True, 'id': client_id, 'sync_pending': action in {'edit','extend','toggle','provision','archive'}}
+        return {'ok': True, 'id': client_id, 'sync_pending': action in {'edit','extend','toggle','access','provision','archive'}}
 
     @staticmethod
     def _register(con: sqlite3.Connection, row: sqlite3.Row) -> None:
