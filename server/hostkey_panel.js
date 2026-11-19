@@ -1,14 +1,14 @@
-/* CAESAR VPN HOSTKEY: guarded CRUD pilot of the familiar VPN MANAGER layout.
+/* CAESAR VPN HOSTKEY: guarded billing and VLESS device management.
  * Never load config.js/sqlite-manager.js: those scripts control old AWG hosts.
  */
 (() => {
   'use strict';
-  const API = '/manager-test';
+  const API = '/manager';
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   })[ch]);
-  const state = {token: sessionStorage.getItem('caesarPanelPilot') || '', clients: [], pilotEnabled: false,
+  const state = {token: sessionStorage.getItem('caesarManagerSession') || '', clients: [], pilotEnabled: false,
     fullAccess: false, writePending: false};
   const finishBoot = () => document.documentElement.classList.add('caesar-panel-ready');
   const status = (message, error = false) => {
@@ -50,7 +50,7 @@
     if (sendRequest && state.token) request('/auth/logout', {method:'POST'}).catch(() => {});
     state.token = '';
     state.clients = [];
-    sessionStorage.removeItem('caesarPanelPilot');
+    sessionStorage.removeItem('caesarManagerSession');
     $('loginPane').classList.remove('m-hide');
     $('workspace').classList.add('m-hide');
     $('mobileHeaderActions').hidden = true;
@@ -94,7 +94,7 @@
     }).join('');
   }
   function actions(c) {
-    const locked = c.can_manage ? '' : ' disabled title="Доступно только на тестовом клиенте"';
+    const locked = c.can_manage ? '' : ' disabled title="Управление недоступно"';
     if (c.archived) return `<div class="m-actions client-actions">
       <button type="button" data-action="restore" data-id="${c.id}"${locked}>Восстановить</button>
       <button type="button" data-history="${c.id}" class="secondary">История</button></div>`;
@@ -155,8 +155,7 @@
         <p>${esc(c.start_date || '—')} — ${lifetime(c) ? '∞' : esc(c.end_date || '—')}</p>
         <div class="pilot-devices">${devices(c)}</div></div><div class="manage"><div class="manage-body">${actions(c)}</div></div></article>`;
     }).join('');
-    status(`Показано ${clients.length} клиентов · ${state.fullAccess ? 'полное управление' :
-      (state.pilotEnabled ? 'изменения разрешены только тестовым клиентам' : 'режим просмотра')}`);
+    status(`Показано ${clients.length} клиентов · ${state.fullAccess ? 'полное управление' : 'режим просмотра'}`);
   }
 
   async function loadClients() {
@@ -210,15 +209,15 @@
 
   function setCreateMode() {
     const form = $('create');
-    form.querySelectorAll('input,select,button').forEach(el => {el.disabled = !state.pilotEnabled;});
+    form.querySelectorAll('input,select,button').forEach(el => {el.disabled = !state.fullAccess;});
     const trial = form.querySelector('[value="trial"]');
     trial.disabled = true; // Exact 24h trial support will be released separately.
     const periodSelect = form.elements.namedItem('period');
     if (periodSelect.value === 'trial') periodSelect.value = '1m';
     const section = form.closest('.create-client-section');
     const heading = section.querySelector('h2');
-    heading.textContent = state.fullAccess ? 'Добавить клиента' : 'Добавить тестового клиента';
-    form.querySelector('[name="name"]').placeholder = state.fullAccess ? 'Имя клиента' : 'TEST Имя';
+    heading.textContent = 'Добавить клиента';
+    form.querySelector('[name="name"]').placeholder = 'Имя клиента';
     if (!section.querySelector('.pilot-create-hint')) {
       const tip = document.createElement('p');
       tip.className = 'm-muted pilot-create-hint';
@@ -226,7 +225,7 @@
     }
     section.querySelector('.pilot-create-hint').textContent = state.fullAccess
       ? 'При создании автоматически выдаются два индивидуальных ключа: телефон и ПК.'
-      : 'Пока разрешены только имена с TEST или ТЕСТ. Два ключа создаются автоматически.';
+      : 'Управление пока недоступно. Ожидается завершение настройки сервера.';
   }
 
   function populateReferrers() {
@@ -329,7 +328,7 @@
     try {
       const data = await request('/auth/login', {method:'POST',body:{code}});
       state.token = data.access_token;
-      sessionStorage.setItem('caesarPanelPilot', state.token);
+      sessionStorage.setItem('caesarManagerSession', state.token);
       await loadClients();
     } catch (e) {status('Ошибка входа: ' + e.message, true);}
   });
@@ -356,7 +355,7 @@
   });
   $('create').addEventListener('submit', async e => {
     e.preventDefault();
-    if (!state.pilotEnabled) return;
+    if (!state.fullAccess) return;
     const form = e.currentTarget;
     const data = new FormData(form);
     const payload = {
@@ -366,10 +365,6 @@
       period: String(data.get('period') || ''),
       referrer_id: data.get('referrer_id') ? Number(data.get('referrer_id')) : null
     };
-    if (!state.fullAccess && !/^(?:TEST|ТЕСТ)(?:\s|$)/i.test(payload.name)) {
-      status('В тестовом режиме имя должно начинаться с TEST или ТЕСТ', true);
-      return;
-    }
     if (await mutate('create', null, payload, 'Тестовый клиент и два устройства созданы')) form.reset();
   });
   $('editForm').addEventListener('submit', async e => {
