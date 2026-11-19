@@ -166,7 +166,7 @@ a{{display:block;text-align:center;margin:11px 0;padding:15px 12px;border-radius
 </style></head><body><main><h1>CAESAR VPN</h1>
 <div class="client-number">Ваш номер клиента: <strong>№{int(row['client_id'])}</strong></div>
 {subscription}{devices}{links}{downloads}
-<p class="foot"><span>Для телефона используйте UXWay, для компьютера — INCY.</span><span>У каждого устройства свой ключ.</span><span>Никому не пересылайте эту страницу.</span></p>
+<p class="foot"><span>У каждого устройства свой ключ.</span><span>Никому не пересылайте эту страницу.</span></p>
 </main></body></html>"""
 
 

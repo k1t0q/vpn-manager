@@ -92,6 +92,7 @@ class SubscriptionTests(unittest.TestCase):
         self.assertIn("body{margin:0;min-height:100vh;display:grid;place-items:center", page)
         self.assertIn('.foot span{display:block', page)
         self.assertIn('<span>У каждого устройства свой ключ.</span>', page)
+        self.assertNotIn('Для телефона используйте UXWay, для компьютера — INCY.', page)
 
     def test_remaining_days_and_progress_have_inclusive_deadline(self):
         current = date(2026, 11, 19)
