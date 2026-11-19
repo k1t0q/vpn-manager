@@ -166,13 +166,14 @@
     $('rows').innerHTML = clients.map(c => {
       const state = stateOf(c);
       const days = daysRemaining(c);
-      const remaining = days === Infinity ? '∞' : (days === null ? '—' : Math.max(0,days));
+      const remaining = days === Infinity ? '∞' : (days === null ? '—' : `${Math.max(0,days)} дн.`);
+      const subscription = c.archived ? {label: 'Архив', name: 'expired'} : state;
       return `<tr><td><strong>${esc(c.name || 'Без имени')}</strong><small>№ ${c.id}</small></td>
         <td>${esc(c.phone || '—')}</td><td>${esc(findReferrer(c.referrer_id))}</td>
         <td><div class="pilot-devices">${devices(c)}</div></td>
         <td>${esc(periodLabel(c.period))}</td><td>${esc(c.start_date || '—')}</td>
-        <td>${lifetime(c) ? '∞' : esc(c.end_date || '—')}</td><td>${remaining}</td>
-        <td><span class="status ${c.archived ? 'expired' : state.name}">${c.archived ? 'Архив' : state.label}</span></td>
+        <td>${lifetime(c) ? '∞' : esc(c.end_date || '—')}</td>
+        <td><div class="subscription-cell"><strong>${remaining}</strong><span class="status ${subscription.name}">${subscription.label}</span></div></td>
         <td>${vpnBadge(c)}</td><td>${actions(c)}</td></tr>`;
     }).join('');
     $('cards').innerHTML = clients.map(c => {

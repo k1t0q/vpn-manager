@@ -68,6 +68,9 @@ font-size:12px;font-weight:750;white-space:nowrap;background:#243045;color:#dce8
 .vpn-access.pending{background:#3b3150;color:#ceacff}
 .vpn-access.none{color:#aeb4c2}
 .vpn-access-help{font-size:11px;color:#aeb4c2;margin-top:5px;line-height:1.35}
+.subscription-cell{display:flex;align-items:flex-start;flex-direction:column;gap:7px;white-space:nowrap}
+.subscription-cell strong{font-size:13px;font-weight:750}
+.subscription-cell .status{display:inline-block}
 .client-actions [data-action="access"].danger{background:#673237;color:#ffe3e5;border-color:#a35258}
 /* Keep every client action visible even when the billing table overflows. */
 .m-scroll.desktop{position:relative;max-width:100%;overflow-x:auto}
@@ -80,9 +83,8 @@ font-size:12px;font-weight:750;white-space:nowrap;background:#243045;color:#dce8
 .m-scroll.desktop th:nth-child(5),.m-scroll.desktop td:nth-child(5){width:92px}
 .m-scroll.desktop th:nth-child(6),.m-scroll.desktop td:nth-child(6){width:94px}
 .m-scroll.desktop th:nth-child(7),.m-scroll.desktop td:nth-child(7){width:94px}
-.m-scroll.desktop th:nth-child(8),.m-scroll.desktop td:nth-child(8){width:76px}
-.m-scroll.desktop th:nth-child(9),.m-scroll.desktop td:nth-child(9){width:84px}
-.m-scroll.desktop th:nth-child(10),.m-scroll.desktop td:nth-child(10){width:152px}
+.m-scroll.desktop th:nth-child(8),.m-scroll.desktop td:nth-child(8){width:118px}
+.m-scroll.desktop th:nth-child(9),.m-scroll.desktop td:nth-child(9){width:152px}
 .m-scroll.desktop th:last-child,.m-scroll.desktop td:last-child{
 position:sticky;right:0;z-index:2;width:270px;min-width:270px;max-width:270px;
 background:#191d25;box-shadow:-9px 0 16px #0e1015b0,inset 1px 0 #303744}
@@ -186,7 +188,7 @@ def panel_html(source: Path = ROOT / "index.html") -> bytes:
                 .replace('id="pushStatus" class="m-muted">За 7, 3 и 1 день до окончания подписки.',
                          'id="pushStatus" class="m-muted">Уведомления включим после запуска панели.')
                 .replace('<th>VLESS</th>', '<th>Телефон / ПК</th>')
-                .replace('<th>Статус</th><th>Действия</th>',
+                .replace('<th>Осталось дней</th><th>Статус</th><th>Действия</th>',
                          '<th>Подписка</th><th>Доступ VPN</th><th>Действия</th>')
                 ).encode("utf-8")
 
