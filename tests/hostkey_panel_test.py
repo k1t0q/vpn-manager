@@ -118,6 +118,15 @@ class HostkeyPanelTests(unittest.TestCase):
         self.assertNotIn('<script src="config.js', data)
         self.assertIn('Безопасный пилот HOSTKEY', data)
 
+    def test_login_is_hidden_until_existing_session_has_loaded(self):
+        data = panel_html().decode()
+        self.assertIn('id="pilotBoot"', data)
+        self.assertIn('html:not(.caesar-panel-ready) #loginPane', data)
+        self.assertIn('html.caesar-panel-ready #pilotBoot{display:none}', data)
+        js = (Path(__file__).resolve().parents[1] / 'server/hostkey_panel.js').read_text()
+        self.assertIn('if (state.token) loadClients().finally(finishBoot)', js)
+        self.assertIn('else finishBoot()', js)
+
     def test_styles_are_allowed_by_csp(self):
         _, _, headers = self.request('/')
         self.assertIn("style-src 'self' 'unsafe-inline'", headers['Content-Security-Policy'])
