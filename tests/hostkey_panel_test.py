@@ -152,6 +152,7 @@ class HostkeyPanelTests(unittest.TestCase):
         self.assertIn("state.clients.some(c => c.vpn_state === 'pending')", panel_js)
         self.assertIn('if (result.sync_pending) setTimeout(refreshPendingStatuses, 2500)', panel_js)
         self.assertIn('.cards .info{display:grid;grid-template-columns:minmax(0,1fr)', data)
+        self.assertIn('.m-grid.layout .card .client-actions button{display:flex;align-items:center;justify-content:center;', data)
         self.assertNotIn('VPN MANAGER · HOSTKEY', data)
 
     def test_push_assets_are_scoped_to_manager_and_public(self):

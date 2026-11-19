@@ -79,6 +79,8 @@ font-size:12px;font-weight:750;white-space:nowrap;background:#243045;color:#dce8
 .cards .pilot-devices-mobile{display:flex;flex-wrap:nowrap;align-items:center;gap:12px;white-space:nowrap;font-size:11px;background:transparent;padding:0}
 .cards .pilot-devices-mobile>span{min-width:0}
 @media (max-width:390px){.cards .pilot-devices-mobile{font-size:10px;gap:6px}}
+.m-grid.layout .card .client-actions button{display:flex;align-items:center;justify-content:center;
+text-align:center;line-height:1.2;min-height:44px;padding:9px 7px}
 .client-actions [data-action="access"].danger{background:#673237;color:#ffe3e5;border-color:#a35258}
 /* Use the available desktop width instead of leaving large empty side margins. */
 .m-wrap{width:100%;max-width:1920px;padding:0 18px 26px}

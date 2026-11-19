@@ -86,7 +86,7 @@ def fetch_landing(db_path: Path, token: str):
     with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5) as con:
         con.row_factory = sqlite3.Row
         return con.execute("""
-            SELECT c.period, c.start_date, c.end_date,
+            SELECT c.id AS client_id, c.period, c.start_date, c.end_date,
                    phone.token AS phone_token, phone.deployed AS phone_deployed,
                    phone.manually_enabled AS phone_enabled,
                    pc.token AS pc_token, pc.deployed AS pc_deployed,
@@ -155,7 +155,7 @@ def landing_html(row) -> str:
 <style>
 *{{box-sizing:border-box}}body{{margin:0;min-height:100vh;display:grid;place-items:center;background:#10131a;color:#f7f8fd;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;padding:24px}}
 main{{width:min(100%,480px);padding:34px 28px;border:1px solid #30394b;border-radius:22px;background:linear-gradient(150deg,#1c2433,#141821);box-shadow:0 18px 55px #0006}}
-h1{{margin:0;font-size:32px;letter-spacing:1px}}.tag{{margin-top:10px;color:#9dadc6;font-size:14px}}.plan{{margin:26px 0 22px;padding:17px 16px;border:1px solid #3b4a60;border-radius:12px;background:#202a3a;color:#d7e3f4}}
+h1{{margin:0;font-size:32px;letter-spacing:1px}}.tag{{margin-top:10px;color:#9dadc6;font-size:14px}}.client-number{{display:inline-flex;align-items:center;gap:6px;margin-top:13px;padding:7px 11px;border-radius:9px;background:#2b3d59;color:#dbe8ff;font-size:13px}}.client-number strong{{color:#fff;font-size:15px}}.plan{{margin:26px 0 22px;padding:17px 16px;border:1px solid #3b4a60;border-radius:12px;background:#202a3a;color:#d7e3f4}}
 .unlimited{{display:flex;align-items:center;gap:15px}}.unlimited strong{{display:block;font-size:17px}}.unlimited small{{display:block;margin-top:4px;color:#9dadc6}}.infinity{{font-size:36px;color:#84a6ff;line-height:1}}
 .plan-header{{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}}.plan-header span{{font-size:13px;color:#9dadc6}}.progress{{height:9px;margin-top:15px;background:#11192a;border-radius:999px;overflow:hidden}}.progress-fill{{height:100%;border-radius:inherit;background:linear-gradient(90deg,#5c88ff,#91a8ff)}}
 .devices{{margin:0 0 22px}}.devices h2{{display:flex;justify-content:space-between;gap:8px;margin:0 0 11px;font-size:15px}}.devices h2 span{{font-size:12px;font-weight:500;color:#9dadc6}}.device{{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-top:1px solid #30394b;font-size:13px}}.device small{{font-size:12px;white-space:nowrap;color:#9cb9ec}}
@@ -164,6 +164,7 @@ a{{display:block;text-align:center;margin:11px 0;padding:15px 12px;border-radius
 .foot{{margin:22px 0 0;font-size:13px;line-height:1.6;color:#91a1bd}}.foot span{{display:block;margin-top:4px}}.foot span:first-child{{margin-top:0}}.notice{{padding:14px;border-radius:12px;background:#493634;color:#ffe1db}}
 @media (max-width:600px){{body{{display:block;min-height:100svh;padding:28px 18px 36px}}main{{margin:0 auto}}.device{{align-items:flex-start;flex-wrap:wrap}}}}
 </style></head><body><main><h1>CAESAR VPN</h1><div class="tag">Ваше персональное подключение</div>
+<div class="client-number">Ваш номер клиента: <strong>№{int(row['client_id'])}</strong></div>
 {subscription}{devices}{links}{downloads}
 <p class="foot"><span>Для телефона используйте UXWay, для компьютера — INCY.</span><span>У каждого устройства свой ключ.</span><span>Никому не пересылайте эту страницу.</span></p>
 </main></body></html>"""

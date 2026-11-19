@@ -34,6 +34,12 @@ class ExpiryAuditTests(unittest.TestCase):
             self.assertEqual(failed['expired_keys_still_active'], 1)
             config['inbounds'][0]['settings']['clients'].pop()
             xray.write_text(json.dumps(config))
+            stale = verify.inspect(db, xray)
+            self.assertFalse(stale['ok'])
+            self.assertEqual(stale['stale_deployed_markers'], 1)
+            self.assertEqual(stale['stale_status_client_ids'], [1])
+            with sqlite3.connect(db) as con:
+                con.execute('UPDATE caesar_vless_devices SET deployed=0 WHERE client_id=1')
             self.assertTrue(verify.inspect(db, xray)['ok'])
 
 

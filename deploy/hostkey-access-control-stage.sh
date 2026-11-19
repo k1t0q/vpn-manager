@@ -46,6 +46,10 @@ systemd-analyze verify "$src/deploy/caesar-xray-fast-sync.path"
 stamp=$(date +%Y%m%d-%H%M%S)
 backup="/root/caesar-panel-env-before-access-$stamp"
 install -m 0600 "$env_path" "$backup"
+watcher_was_active=0
+watcher_was_enabled=0
+if systemctl is-active --quiet caesar-xray-fast-sync.path; then watcher_was_active=1; fi
+if systemctl is-enabled --quiet caesar-xray-fast-sync.path; then watcher_was_enabled=1; fi
 if [[ -e "$signal_path" && ! -f "$signal_path" ]]; then
   echo 'Fast-sync signal is not a regular file' >&2
   exit 2
@@ -59,12 +63,30 @@ env_tmp=$(mktemp /etc/caesar/.manager-access.XXXXXXXX)
 chmod 0600 "$env_tmp"
 printf 'CAESAR_PANEL_MODE=full\nCAESAR_XRAY_FAST_SYNC_SIGNAL=/var/lib/caesar-manager/fast-sync.signal\n' > "$env_tmp"
 mv "$env_tmp" "$env_path"
-if ! systemctl restart caesar-vless-panel || ! systemctl is-active --quiet caesar-vless-panel || \
-   ! curl -fsS --max-time 5 http://127.0.0.1:5059/manager/health | python3 -c \
-      'import json,sys;s=json.load(sys.stdin);assert s["ok"] and s["full_access"] and s["fast_sync"]'; then
+# systemctl restart returns before the Python listener has bound port 5059.
+# Allow for startup; one immediate curl can falsely trigger rollback.
+panel_ready=0
+if systemctl restart caesar-vless-panel; then
+  for attempt in {1..15}; do
+    if systemctl is-active --quiet caesar-vless-panel && \
+       curl -fs --max-time 2 http://127.0.0.1:5059/manager/health | python3 -c \
+          'import json,sys;s=json.load(sys.stdin);assert s["ok"] and s["full_access"] and s["fast_sync"]' 2>/dev/null; then
+      panel_ready=1
+      break
+    fi
+    sleep 1
+  done
+fi
+if [[ "$panel_ready" != 1 ]]; then
   install -m 0600 "$backup" "$env_path"
   systemctl restart caesar-vless-panel || true
-  echo 'Panel health failed. Original environment restored; timer unaffected.' >&2
+  if [[ "$watcher_was_active" == 0 ]]; then
+    systemctl stop caesar-xray-fast-sync.path || true
+  fi
+  if [[ "$watcher_was_enabled" == 0 ]]; then
+    systemctl disable caesar-xray-fast-sync.path || true
+  fi
+  echo 'Panel health failed after retrying. Original environment and watcher state restored; inspect caesar-vless-panel journal.' >&2
   exit 1
 fi
 for unit in xray caddy caesar-xray-expiry.timer caesar-xray-fast-sync.path; do
