@@ -22,11 +22,12 @@ from wsgiref.simple_server import make_server, WSGIRequestHandler
 try:
     from .hostkey_panel_ops import PanelOperations, OperationError
     from .xray_hostkey import active_subscription
-    from . import hostkey_push
+    from . import hostkey_push, hostkey_risk
 except ImportError:
     from hostkey_panel_ops import PanelOperations, OperationError
     from xray_hostkey import active_subscription
     import hostkey_push
+    import hostkey_risk
 
 
 PREFIX = "/manager"
@@ -80,6 +81,26 @@ font-size:12px;font-weight:750;white-space:nowrap;background:#243045;color:#dce8
 .m-grid.layout .card .client-actions button{display:flex;align-items:center;justify-content:center;
 text-align:center;line-height:1.2;min-height:44px;padding:9px 7px}
 .client-actions [data-action="access"].danger{background:#673237;color:#ffe3e5;border-color:#a35258}
+/* Risk summary is visible without opening individual client profiles. */
+#riskPanel{padding:12px 14px;margin:0 0 14px;border-radius:12px;border:1px solid #344457;
+background:#1e2734;color:#cad9e8;font-size:13px}
+#riskPanel .risk-heading{display:flex;gap:9px;align-items:center;flex-wrap:wrap;font-weight:700}
+#riskPanel .risk-heading strong{color:#f5f8ff}
+#riskPanel .risk-badge{display:inline-flex;align-items:center;border-radius:7px;padding:4px 8px;
+font-size:11px;line-height:1.2;font-weight:750;white-space:nowrap}
+.risk-badge.risk-high{background:#5b292d;color:#ffaaa9}
+.risk-badge.risk-review{background:#4c391d;color:#ffd18d}
+#riskPanel .risk-items{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:10px}
+#riskPanel .risk-jump{display:flex;align-items:center;justify-content:space-between;gap:8px;
+min-height:44px;padding:8px 10px;border-radius:9px;text-align:left;border:1px solid #3b4b5b;
+background:#202b39;color:#fff;white-space:normal;min-width:0;font-size:12px}
+#riskPanel .risk-jump:hover{border-color:#68a8ff;background:#27394e}
+#riskPanel .risk-jump span:first-child{min-width:0;overflow-wrap:anywhere}
+#riskPanel .risk-detail{color:#aec0d2;font-size:11px;margin-top:6px;font-weight:400}
+.client-risk-mark{display:inline-block;margin:5px 0 0}
+.risk-client-highlight{outline:2px solid #ffa762!important;outline-offset:-2px;background:#313144!important;
+box-shadow:0 0 0 5px #f6a75822;transition:background .2s}
+@media(max-width:600px){#riskPanel .risk-items{grid-template-columns:1fr}}
 /* Use the available desktop width instead of leaving large empty side margins. */
 .m-wrap{width:100%;max-width:1920px;padding:0 18px 26px}
 .m-grid.layout{grid-template-columns:290px minmax(0,1fr)}
@@ -199,7 +220,16 @@ def panel_html(source: Path = ROOT / "index.html") -> bytes:
     page = source.read_text(encoding="utf-8")
     if page.count(FRONTEND_SCRIPTS) != 1:
         raise ValueError("Unexpected old panel scripts; refusing to load legacy AWG JavaScript")
+    insertion = '<main class="m-panel content"><h2>Клиенты</h2><div class="m-tools">'
+    if page.count(insertion) != 1:
+        raise ValueError('Unexpected clients layout; refusing risk-panel injection')
     return (page.replace(FRONTEND_SCRIPTS, PILOT_SCRIPT)
+                .replace(insertion, '<main class="m-panel content"><h2>Клиенты</h2>'
+                         '<section id="riskPanel" aria-label="Риск передачи VPN-ключей" aria-live="polite">'
+                         '<div class="risk-heading"><strong>🛡️ Контроль передачи ключей</strong>'
+                         '<span id="riskState">Ожидаем данные мониторинга…</span></div>'
+                         '<div id="riskItems" class="risk-items" hidden></div></section>'
+                         '<div class="m-tools">', 1)
                 .replace('<body>', '<body><div id="pilotBoot" role="status" aria-live="polite">'
                          '<div class="pilot-boot-content"><span class="pilot-boot-spinner" '
                          'aria-hidden="true"></span><span>Загружаем VPN MANAGER…</span></div></div>', 1)
@@ -238,13 +268,15 @@ def panel_manifest() -> bytes:
 class Panel:
     def __init__(self, db_path: Path = DB, code_file: Path = CODE_FILE,
                  frontend: Path = ROOT / "index.html", javascript: Path = ROOT / "server/hostkey_panel.js",
-                 push_db: Path = hostkey_push.PUSH_DB, push_key: Path = hostkey_push.PUBLIC_KEY):
+                 push_db: Path = hostkey_push.PUSH_DB, push_key: Path = hostkey_push.PUBLIC_KEY,
+                 risk_db: Path = hostkey_risk.RISK_DB):
         self.db_path = db_path
         self.code_file = code_file
         self.frontend = frontend
         self.javascript = javascript
         self.push_db = push_db
         self.push_key = push_key
+        self.risk_db = risk_db
         self.ops = PanelOperations.from_environment(db_path)
         self.sessions: dict[str, float] = {}
         self.attempts: dict[str, list[float]] = defaultdict(list)
@@ -326,6 +358,9 @@ class Panel:
                                                                     "pilot_enabled": self.ops.enabled,
                                                                     "full_access": self.ops.allow_all,
                                                                     "fast_sync": bool(self.ops.sync_signal_path and self.ops.sync_signal_path.is_file())})
+            if method == 'GET' and subpath == '/api/risk':
+                return self._respond(start_response, '200 OK',
+                                     {'ok': True, **hostkey_risk.risk_summary(self.risk_db, self.db_path)})
             if method == 'GET' and subpath == '/api/push/key':
                 return self._respond(start_response, '200 OK',
                                      {'ok': True, 'public_key': hostkey_push.public_key(self.push_key)})

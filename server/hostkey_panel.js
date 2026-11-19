@@ -9,7 +9,7 @@
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   })[ch]);
   const state = {token: sessionStorage.getItem('caesarManagerSession') || '', clients: [], pilotEnabled: false,
-    fullAccess: false, fastSync: false, writePending: false};
+    fullAccess: false, fastSync: false, writePending: false, risk: {ready: false, alerts: []}};
   const finishBoot = () => document.documentElement.classList.add('caesar-panel-ready');
   const status = (message, error = false) => {
     $('status').textContent = message;
@@ -50,6 +50,7 @@
     if (sendRequest && state.token) request('/auth/logout', {method:'POST'}).catch(() => {});
     state.token = '';
     state.clients = [];
+    state.risk = {ready: false, alerts: []};
     sessionStorage.removeItem('caesarManagerSession');
     $('loginPane').classList.remove('m-hide');
     $('workspace').classList.add('m-hide');
@@ -141,6 +142,75 @@
     const found = state.clients.find(c => c.id === id);
     return found ? found.name : (id ? `№${id}` : '—');
   }
+  function riskFor(id) {
+    const alerts = state.risk.alerts || [];
+    const high = alerts.find(item => item.client_id === id && item.level === 'high');
+    return high || alerts.find(item => item.client_id === id);
+  }
+  function riskMark(id) {
+    const alert = riskFor(id);
+    if (!alert) return '';
+    const high = alert.level === 'high';
+    return `<span class="risk-badge client-risk-mark ${high ? 'risk-high' : 'risk-review'}"`
+      + ` title="Подозрительная одновременная активность одного ключа из разных сетей">`
+      + `${high ? '🔴 Высокий риск' : '🟠 Проверить'}</span>`;
+  }
+  function renderRisk() {
+    const details = state.risk;
+    const alerts = details.alerts || [];
+    const statusLabel = $('riskState');
+    const items = $('riskItems');
+    if (!details.ready) {
+      statusLabel.textContent = `⚪ ${details.message || 'Мониторинг пока недоступен'}`;
+      items.hidden = true;
+      items.innerHTML = '';
+      return;
+    }
+    const high = alerts.filter(item => item.level === 'high').length;
+    const review = alerts.filter(item => item.level === 'review').length;
+    statusLabel.textContent = alerts.length
+      ? `🔴 Высокий риск: ${high} · 🟠 Проверить: ${review}`
+      : details.observed_24h === false ? '⚪ Нет наблюдений за последние 24 часа'
+      : '🟢 Пока нет подозрительных совпадений';
+    items.hidden = alerts.length === 0;
+    items.innerHTML = alerts.map(item => {
+      const label = item.level === 'high' ? '🔴 Высокий риск' : '🟠 Проверить';
+      return `<button type="button" class="risk-jump" data-risk-client="${item.client_id}"`
+        + ` title="Найти клиента №${item.client_id} в списке">`
+        + `<span><b>${esc(item.name)}</b> · №${item.client_id}`
+        + `<span class="risk-detail" style="display:block">${item.kind === 'phone' ? '📱 Телефон' : '💻 ПК'}`
+        + ` · ${item.overlap_windows} пересечений за час</span></span>`
+        + `<span class="risk-badge ${item.level === 'high' ? 'risk-high' : 'risk-review'}">${label}</span></button>`;
+    }).join('');
+  }
+  let riskRefreshPending = false;
+  async function loadRisk() {
+    if (!state.token || riskRefreshPending || document.hidden) return;
+    riskRefreshPending = true;
+    try {
+      const details = await request('/api/risk');
+      if (!state.token) return;
+      state.risk = details;
+    } catch {
+      state.risk = {ready:false, alerts:[], message:'Нет данных мониторинга'};
+    } finally {
+      riskRefreshPending = false;
+    }
+    renderRisk();
+    if (state.clients.length) render();
+  }
+  function jumpToRiskClient(id) {
+    if (!state.clients.some(client => client.id === id && !client.archived)) return;
+    $('search').value = '';
+    $('filter').value = 'all';
+    render();
+    const visible = [...document.querySelectorAll(`[data-client-id="${id}"]`)]
+      .find(element => element.getClientRects().length > 0);
+    if (!visible) return;
+    visible.scrollIntoView({behavior:'smooth', block:'center', inline:'nearest'});
+    visible.classList.add('risk-client-highlight');
+    setTimeout(() => visible.classList.remove('risk-client-highlight'), 3000);
+  }
   function searched() {
     const query = $('search').value.trim().toLocaleLowerCase('ru');
     const filter = $('filter').value;
@@ -168,7 +238,7 @@
     $('rows').innerHTML = clients.map(c => {
       const days = daysRemaining(c);
       const remaining = days === Infinity ? '∞' : (days === null ? '—' : Math.max(0,days));
-      return `<tr><td><strong>${esc(c.name || 'Без имени')}</strong><small>№ ${c.id}</small></td>
+      return `<tr data-client-id="${c.id}"><td><strong>${esc(c.name || 'Без имени')}</strong><small>№ ${c.id}</small>${riskMark(c.id)}</td>
         <td>${esc(c.phone || '—')}</td><td>${esc(findReferrer(c.referrer_id))}</td>
         <td><div class="pilot-devices">${devices(c)}</div></td>
         <td>${esc(periodLabel(c.period))}</td><td>${esc(c.start_date || '—')}</td>
@@ -179,7 +249,7 @@
     $('cards').innerHTML = clients.map(c => {
       const s = c.archived ? {label:'Архив',name:'expired'} : stateOf(c);
       const days = daysRemaining(c);
-      return `<article class="card"><div class="card-top"><div><h3 class="card-client-name">${esc(c.name || 'Без имени')}</h3><small class="m-muted">№ ${c.id} · ${esc(c.phone || 'Без телефона')}</small></div><span class="status ${s.name}">${s.label}</span></div>
+      return `<article class="card" data-client-id="${c.id}"><div class="card-top"><div><h3 class="card-client-name">${esc(c.name || 'Без имени')}</h3><small class="m-muted">№ ${c.id} · ${esc(c.phone || 'Без телефона')}</small>${riskMark(c.id)}</div><span class="status ${s.name}">${s.label}</span></div>
         <div class="info"><p>${esc(periodLabel(c.period))} · ${lifetime(c) ? 'Бессрочно' : (days === null ? 'Дата не указана' : `осталось ${Math.max(0,days)} дн.`)}</p>
         <p>${esc(c.start_date || '—')} — ${lifetime(c) ? '∞' : esc(c.end_date || '—')}</p>
         <p>${vpnBadge(c)}</p><div class="pilot-devices pilot-devices-mobile">${devices(c, true)}</div></div>
@@ -200,6 +270,7 @@
       setCreateMode();
       populateReferrers();
       render();
+      loadRisk();
     } catch (e) {
       // A temporary API outage should leave the refresh/logout controls available.
       if (state.token) showPanel();
@@ -282,6 +353,7 @@
   // The Xray fallback timer runs every five minutes. Keep checking until it
   // confirms the requested state, even after the initial fast-sync window.
   setInterval(refreshPendingStatuses, 10000);
+  setInterval(loadRisk, 60000);
 
   async function mutate(action, id, payload, label) {
     if (state.writePending) {
@@ -391,6 +463,8 @@
   $('search').addEventListener('input', render);
   $('filter').addEventListener('change', render);
   document.addEventListener('click', e => {
+    const risk = e.target.closest('[data-risk-client]');
+    if (risk) {jumpToRiskClient(Number(risk.dataset.riskClient)); return;}
     const link = e.target.closest('[data-link]');
     const history = e.target.closest('[data-history]');
     const action = e.target.closest('[data-action]');

@@ -21,8 +21,10 @@ from urllib.parse import urlsplit
 
 try:
     from .xray_hostkey import MOSCOW
+    from . import hostkey_risk
 except ImportError:
     from xray_hostkey import MOSCOW
+    import hostkey_risk
 
 
 PUSH_DB = Path(os.environ.get('CAESAR_PUSH_DB', '/var/lib/caesar-manager/push.db'))
@@ -222,7 +224,8 @@ def _try_send(path: Path, ident: str, event_key: str, subscription: dict, payloa
 
 
 def deliver(push_path: Path = PUSH_DB, clients_path: Path = CLIENT_DB,
-            private: Path = PRIVATE_KEY, sender=None, today: date | None = None) -> dict:
+            private: Path = PRIVATE_KEY, sender=None, today: date | None = None,
+            risk_path: Path = hostkey_risk.RISK_DB) -> dict:
     now = time.time()
     today = today or datetime.now(MOSCOW).date()
     clients = client_snapshot(clients_path)
@@ -262,6 +265,30 @@ def deliver(push_path: Path = PUSH_DB, clients_path: Path = CLIENT_DB,
                 result['sent'] += 1
             elif outcome == 'failed':
                 result['failed'] += 1
+    # High-risk alerts are opt-in through the existing administrator Web Push
+    # subscriptions, once per client/key/day. No suspected key is disabled.
+    try:
+        risk = hostkey_risk.risk_summary(risk_path, clients_path, int(now))
+    except (OSError, ValueError, sqlite3.Error):
+        risk = {'ready': False, 'alerts': []}
+    result['risk_sent'] = 0
+    result['risk_failed'] = 0
+    if risk.get('ready'):
+        for alert in risk['alerts']:
+            if alert['level'] != 'high' or now - alert['last_seen'] > 600:
+                continue
+            kind = 'телефон' if alert['kind'] == 'phone' else 'ПК'
+            payload = {'title': 'CAESAR VPN MANAGER',
+                       'body': f"Проверьте клиента №{alert['client_id']}: высокий риск передачи ключа ({kind}).",
+                       'tag': f"caesar-risk-{alert['client_id']}-{alert['kind']}"}
+            event_key = sha256(f"risk:{alert['client_id']}:{alert['kind']}:{today.isoformat()}".encode()).hexdigest()
+            for device in devices:
+                outcome = _try_send(push_path, device['id'], event_key,
+                                    json.loads(device['subscription']), payload, private, sender, now)
+                if outcome == 'sent':
+                    result['risk_sent'] += 1
+                elif outcome == 'failed':
+                    result['risk_failed'] += 1
     return result
 
 

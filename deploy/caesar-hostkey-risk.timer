@@ -1,0 +1,11 @@
+[Unit]
+Description=CAESAR VPN key-sharing risk check every minute
+
+[Timer]
+OnBootSec=30s
+OnUnitInactiveSec=60s
+AccuracySec=15s
+Unit=caesar-hostkey-risk.service
+
+[Install]
+WantedBy=timers.target

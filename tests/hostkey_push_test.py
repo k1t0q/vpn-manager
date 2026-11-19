@@ -6,6 +6,7 @@ from pathlib import Path
 import sqlite3
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -97,6 +98,22 @@ class HostkeyPushTests(unittest.TestCase):
             db.execute('CREATE TABLE caesar_client_archives(client_id INTEGER PRIMARY KEY)')
             db.execute('INSERT INTO caesar_client_archives VALUES(4)')
         self.assertNotIn(4, [item['id'] for item in push.client_snapshot(self.clients)])
+
+    def test_high_risk_sends_one_push_per_key_per_day_without_blocking(self):
+        push.subscribe(subscription(), self.push_db)
+        now = time.time()
+        suspicious = {'ready': True, 'alerts': [
+            {'client_id': 42, 'kind': 'phone', 'level': 'high', 'last_seen': now},
+            {'client_id': 43, 'kind': 'pc', 'level': 'review', 'last_seen': now},
+            {'client_id': 44, 'kind': 'phone', 'level': 'high', 'last_seen': now - 3600}]}
+        sent = []
+        with patch.object(push.hostkey_risk, 'risk_summary', return_value=suspicious), \
+                patch.object(push, 'send', side_effect=lambda _s, payload, _p, _sender: sent.append(payload)):
+            first = push.deliver(self.push_db, self.clients, today=date(2026, 11, 19))
+            second = push.deliver(self.push_db, self.clients, today=date(2026, 11, 19))
+        self.assertEqual(first['risk_sent'], 1)
+        self.assertEqual(second['risk_sent'], 0)
+        self.assertEqual(len([item for item in sent if 'риск' in item['body']]), 1)
 
 
 if __name__ == '__main__':

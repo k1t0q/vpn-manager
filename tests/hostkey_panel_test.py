@@ -20,6 +20,7 @@ class HostkeyPanelTests(unittest.TestCase):
         self.db = path / 'clients.db'
         self.code = path / 'code'
         self.push_db = path / 'push.db'
+        self.risk_db = path / 'risk.db'
         self.push_key = path / 'push-public.key'
         self.push_key.write_text(base64.urlsafe_b64encode(b'\x04' + b'\x01' * 64).decode().rstrip('='))
         self.code.write_text('test-only-long-code-0123456789abcdefghij\n')
@@ -44,7 +45,8 @@ class HostkeyPanelTests(unittest.TestCase):
                 INSERT INTO caesar_connect_links VALUES(33,'secret-connect-token');
                 INSERT INTO client_history VALUES(1,'owner',33,'created','Imported', '2026-11-19');
             ''')
-        self.panel = Panel(self.db, self.code, push_db=self.push_db, push_key=self.push_key)
+        self.panel = Panel(self.db, self.code, push_db=self.push_db, push_key=self.push_key,
+                           risk_db=self.risk_db)
 
     def request(self, path, method='GET', body=None, token=None, origin='https://vpn.caesarbot.ru', request_id='test-operation-idempotency-123'):
         encoded = json.dumps(body).encode() if body is not None else b''
@@ -78,6 +80,8 @@ class HostkeyPanelTests(unittest.TestCase):
         self.assertEqual(status, '401 Unauthorized')
         status, _, _ = self.request('/api/push/key')
         self.assertEqual(status, '401 Unauthorized')
+        status, _, _ = self.request('/api/risk')
+        self.assertEqual(status, '401 Unauthorized')
         status, _, _ = self.request('/auth/login', method='POST', body={'code': 'wrong'}, origin='https://example.org')
         self.assertEqual(status, '403 Forbidden')
 
@@ -107,6 +111,21 @@ class HostkeyPanelTests(unittest.TestCase):
         status, _, _ = self.request('/api/clients/34/link', token=token)
         self.assertEqual(status, '404 Not Found')
 
+    def test_risk_status_is_authenticated_and_never_claims_clean_before_collection(self):
+        token = self.login()
+        status, result, _ = self.request('/api/risk', token=token)
+        self.assertEqual(status, '200 OK')
+        self.assertFalse(result['ready'])
+        self.assertEqual(result['alerts'], [])
+        with patch('server.hostkey_panel.hostkey_risk.risk_summary', return_value={
+            'ready': True, 'high': 1, 'review': 0, 'updated_at': 1795080000,
+            'alerts': [{'client_id': 33, 'kind': 'phone', 'name': 'me',
+                        'level': 'high', 'overlap_windows': 6, 'last_seen': 1795080000}]}):
+            status, result, _ = self.request('/api/risk', token=token)
+        self.assertEqual(status, '200 OK')
+        self.assertEqual(result['alerts'][0]['client_id'], 33)
+        self.assertNotIn('uuid', json.dumps(result))
+
     def test_no_write_operations_even_after_login(self):
         token = self.login()
         status, _, _ = self.request('/api/clients/33', 'POST', {'name': 'deleted'}, token)
@@ -126,6 +145,8 @@ class HostkeyPanelTests(unittest.TestCase):
     def test_frontend_has_no_old_awg_scripts(self):
         data = panel_html().decode()
         self.assertIn('/manager/panel.js', data)
+        self.assertIn('id="riskPanel"', data)
+        self.assertIn('id="riskItems"', data)
         self.assertIn('/manager/push.js', data)
         self.assertIn("worker-src 'self'", self.request('/')[2]['Content-Security-Policy'])
         self.assertIn('/manager/styles.css', data)

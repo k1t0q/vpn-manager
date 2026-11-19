@@ -1,0 +1,15 @@
+[Unit]
+Description=CAESAR VPN key-sharing risk collector (read-only Xray journal)
+After=xray.service
+ConditionPathExists=/usr/local/etc/xray/config.json
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/bin/python3 /srv/caesar-manager-src/server/hostkey_risk.py collect
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/caesar-risk-monitor
