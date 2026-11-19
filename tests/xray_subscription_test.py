@@ -88,6 +88,8 @@ class SubscriptionTests(unittest.TestCase):
         self.assertIn("body{display:block;min-height:100svh;padding:28px 18px 36px}", page)
         self.assertIn("main{margin:0 auto}", page)
         self.assertIn("body{margin:0;min-height:100vh;display:grid;place-items:center", page)
+        self.assertIn('.foot span{display:block', page)
+        self.assertIn('<span>У каждого устройства свой ключ.</span>', page)
 
     def test_remaining_days_and_progress_have_inclusive_deadline(self):
         current = date(2026, 11, 19)

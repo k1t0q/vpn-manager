@@ -1,0 +1,12 @@
+[Unit]
+Description=Deliver pending CAESAR VPN push tests and expiry reminders every minute
+
+[Timer]
+OnCalendar=*:0/1
+AccuracySec=10s
+Persistent=true
+Unit=caesar-hostkey-push.service
+
+[Install]
+WantedBy=timers.target
+

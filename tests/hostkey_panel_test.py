@@ -1,4 +1,5 @@
 import io
+import base64
 import json
 import os
 from pathlib import Path
@@ -18,6 +19,9 @@ class HostkeyPanelTests(unittest.TestCase):
         path = Path(self.temp.name)
         self.db = path / 'clients.db'
         self.code = path / 'code'
+        self.push_db = path / 'push.db'
+        self.push_key = path / 'push-public.key'
+        self.push_key.write_text(base64.urlsafe_b64encode(b'\x04' + b'\x01' * 64).decode().rstrip('='))
         self.code.write_text('test-only-long-code-0123456789abcdefghij\n')
         with sqlite3.connect(self.db) as con:
             con.executescript('''
@@ -40,12 +44,13 @@ class HostkeyPanelTests(unittest.TestCase):
                 INSERT INTO caesar_connect_links VALUES(33,'secret-connect-token');
                 INSERT INTO client_history VALUES(1,'owner',33,'created','Imported', '2026-11-19');
             ''')
-        self.panel = Panel(self.db, self.code)
+        self.panel = Panel(self.db, self.code, push_db=self.push_db, push_key=self.push_key)
 
     def request(self, path, method='GET', body=None, token=None, origin='https://vpn.caesarbot.ru', request_id='test-operation-idempotency-123'):
         encoded = json.dumps(body).encode() if body is not None else b''
+        path_only, _, query = path.partition('?')
         environ = {
-            'REQUEST_METHOD': method, 'PATH_INFO': '/manager' + path,
+            'REQUEST_METHOD': method, 'PATH_INFO': '/manager' + path_only, 'QUERY_STRING': query,
             'CONTENT_LENGTH': str(len(encoded)), 'wsgi.input': io.BytesIO(encoded),
             'REMOTE_ADDR': '192.0.2.4', 'HTTP_ORIGIN': origin,
             'HTTP_AUTHORIZATION': f'Bearer {token}' if token else '',
@@ -70,6 +75,8 @@ class HostkeyPanelTests(unittest.TestCase):
         status, _, _ = self.request('/api/clients')
         self.assertEqual(status, '401 Unauthorized')
         status, _, _ = self.request('/api/clients/33/link')
+        self.assertEqual(status, '401 Unauthorized')
+        status, _, _ = self.request('/api/push/key')
         self.assertEqual(status, '401 Unauthorized')
         status, _, _ = self.request('/auth/login', method='POST', body={'code': 'wrong'}, origin='https://example.org')
         self.assertEqual(status, '403 Forbidden')
@@ -119,6 +126,8 @@ class HostkeyPanelTests(unittest.TestCase):
     def test_frontend_has_no_old_awg_scripts(self):
         data = panel_html().decode()
         self.assertIn('/manager/panel.js', data)
+        self.assertIn('/manager/push.js', data)
+        self.assertIn("worker-src 'self'", self.request('/')[2]['Content-Security-Policy'])
         self.assertIn('/manager/styles.css', data)
         self.assertNotIn('sqlite-manager.js', data)
         self.assertNotIn('<script src="config.js', data)
@@ -133,9 +142,42 @@ class HostkeyPanelTests(unittest.TestCase):
         self.assertIn('position:sticky;right:0', data)
         self.assertIn('.m-scroll.desktop .client-actions{display:grid;', data)
         self.assertIn('max-width:1920px', data)
+        self.assertIn('.subscription-cell{display:flex;align-items:center', data)
         self.assertIn('max-width:1650px', data)
         self.assertIn('max-width:1350px', data)
         self.assertIn('Пригласил: ${esc(findReferrer(c.referrer_id))}', panel_js)
+
+    def test_push_assets_are_scoped_to_manager_and_public(self):
+        status, body, _ = self.request('/manifest.webmanifest')
+        self.assertEqual(status, '200 OK')
+        manifest = json.loads(body)
+        self.assertEqual(manifest['scope'], '/manager/')
+        self.assertEqual(manifest['start_url'], '/manager/')
+        self.assertTrue(all(icon['src'].startswith('/manager/') for icon in manifest['icons']))
+        for path in ('/push.js', '/sw.js', '/push-icon-192.png'):
+            status, body, _ = self.request(path)
+            self.assertEqual(status, '200 OK')
+            self.assertTrue(body)
+
+    def test_push_registration_and_test_queue_require_admin_session(self):
+        token = self.login()
+        status, key, _ = self.request('/api/push/key', token=token)
+        self.assertEqual(status, '200 OK')
+        self.assertEqual(key['public_key'], self.push_key.read_text())
+        subscription = {'endpoint': 'https://fcm.googleapis.com/fcm/send/demo',
+                        'keys': {'p256dh': key['public_key'],
+                                 'auth': base64.urlsafe_b64encode(b'\x03' * 16).decode().rstrip('=')}}
+        status, _, _ = self.request('/api/push/subscribe', 'POST', subscription)
+        self.assertEqual(status, '401 Unauthorized')
+        status, result, _ = self.request('/api/push/subscribe', 'POST', subscription, token)
+        self.assertEqual(status, '200 OK')
+        device = result['device_id']
+        status, result, _ = self.request('/api/push/test', 'POST', {'device_id': device}, token)
+        self.assertEqual(status, '200 OK')
+        status, result, _ = self.request('/api/push/test-status?ticket=' + result['ticket'], token=token)
+        self.assertEqual((status, result['state']), ('200 OK', 'pending'))
+        status, _, _ = self.request('/api/push/unsubscribe', 'POST', {'device_id': device}, token)
+        self.assertEqual(status, '200 OK')
 
     def test_vpn_status_never_confuses_paid_status_with_deployed_keys(self):
         with sqlite3.connect(self.db) as con:

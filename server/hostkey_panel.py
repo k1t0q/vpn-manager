@@ -16,15 +16,17 @@ import re
 import secrets
 import sqlite3
 import time
-from urllib.parse import unquote
+from urllib.parse import unquote, parse_qs
 from wsgiref.simple_server import make_server, WSGIRequestHandler
 
 try:
     from .hostkey_panel_ops import PanelOperations, OperationError
     from .xray_hostkey import active_subscription
+    from . import hostkey_push
 except ImportError:
     from hostkey_panel_ops import PanelOperations, OperationError
     from xray_hostkey import active_subscription
+    import hostkey_push
 
 
 PREFIX = "/manager"
@@ -41,7 +43,7 @@ ACTION_RE = re.compile(r"^/api/clients/([1-9][0-9]*)/(edit|extend|toggle|access|
 FRONTEND_SCRIPTS = ('<script src="config.js?v=awg1"></script>'
                     '<script src="sqlite-manager.js?v=alignment1"></script>'
                     '<script src="push-manager.js?v=push1"></script>')
-PILOT_SCRIPT = '<script src="/manager/panel.js"></script>'
+PILOT_SCRIPT = '<script src="/manager/panel.js"></script><script src="/manager/push.js"></script>'
 PILOT_STYLE = '''<style>
 /* Hide protected content until the session status is known. */
 html:not(.caesar-panel-ready) #loginPane,
@@ -54,7 +56,9 @@ border-top-color:#4c9df9;border-radius:50%;animation:pilot-boot-spin .9s linear 
 @keyframes pilot-boot-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){#pilotBoot .pilot-boot-spinner{animation:none}}
 html.caesar-panel-ready #pilotBoot{display:none}
-#enablePush,#testPush,#disablePush{display:none!important}
+#pushStatus{line-height:1.45}
+#enablePush,#testPush,#disablePush{margin:4px 0}
+#enablePush[hidden],#testPush[hidden],#disablePush[hidden]{display:none!important}
 .pilot-note{background:#26364b;border:1px solid #55729b;border-radius:10px;padding:14px;
 margin-bottom:14px;color:#e5edfa;line-height:1.45}
 .pilot-devices{display:grid;gap:4px;text-align:left;font-size:12px}
@@ -68,9 +72,10 @@ font-size:12px;font-weight:750;white-space:nowrap;background:#243045;color:#dce8
 .vpn-access.pending{background:#3b3150;color:#ceacff}
 .vpn-access.none{color:#aeb4c2}
 .vpn-access-help{font-size:11px;color:#aeb4c2;margin-top:5px;line-height:1.35}
-.subscription-cell{display:flex;align-items:flex-start;flex-direction:column;gap:7px;white-space:nowrap}
+.subscription-cell{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:7px;white-space:nowrap;width:100%}
 .subscription-cell strong{font-size:13px;font-weight:750}
 .subscription-cell .status{display:inline-block}
+.m-scroll.desktop th:nth-child(8),.m-scroll.desktop td:nth-child(8){text-align:center}
 .client-actions [data-action="access"].danger{background:#673237;color:#ffe3e5;border-color:#a35258}
 /* Use the available desktop width instead of leaving large empty side margins. */
 .m-wrap{width:100%;max-width:1920px;padding:0 18px 26px}
@@ -210,20 +215,34 @@ def panel_html(source: Path = ROOT / "index.html") -> bytes:
                          'перед каждым изменением сохраняется резервная копия.</p>'
                          '<div class="m-grid layout">', 1)
                 .replace('id="pushStatus" class="m-muted">За 7, 3 и 1 день до окончания подписки.',
-                         'id="pushStatus" class="m-muted">Уведомления включим после запуска панели.')
+                         'id="pushStatus" class="m-muted">Включите push, чтобы получать напоминания за 7, 3 и 1 день, а также об окончании подписки.')
                 .replace('<th>VLESS</th>', '<th>Телефон / ПК</th>')
                 .replace('<th>Осталось дней</th><th>Статус</th><th>Действия</th>',
                          '<th>Подписка</th><th>Доступ VPN</th><th>Действия</th>')
                 ).encode("utf-8")
 
 
+def panel_manifest() -> bytes:
+    """Give the HOSTKEY administrator PWA a separate identity and URL scope."""
+    data = json.loads((ROOT / 'manifest.webmanifest').read_text(encoding='utf-8'))
+    data.update({'id': '/manager/', 'name': 'CAESAR VPN MANAGER', 'short_name': 'CAESAR VPN',
+                 'start_url': '/manager/', 'scope': '/manager/',
+                 'description': 'Администрирование подписок CAESAR VPN на HOSTKEY'})
+    for icon in data.get('icons', []):
+        icon['src'] = '/manager/' + Path(icon['src']).name
+    return json.dumps(data, ensure_ascii=False).encode('utf-8')
+
+
 class Panel:
     def __init__(self, db_path: Path = DB, code_file: Path = CODE_FILE,
-                 frontend: Path = ROOT / "index.html", javascript: Path = ROOT / "server/hostkey_panel.js"):
+                 frontend: Path = ROOT / "index.html", javascript: Path = ROOT / "server/hostkey_panel.js",
+                 push_db: Path = hostkey_push.PUSH_DB, push_key: Path = hostkey_push.PUBLIC_KEY):
         self.db_path = db_path
         self.code_file = code_file
         self.frontend = frontend
         self.javascript = javascript
+        self.push_db = push_db
+        self.push_key = push_key
         self.ops = PanelOperations.from_environment(db_path)
         self.sessions: dict[str, float] = {}
         self.attempts: dict[str, list[float]] = defaultdict(list)
@@ -255,6 +274,25 @@ class Panel:
             except OSError:
                 return self._respond(start_response, "503 Service Unavailable", {"ok": False, "error": "Panel unavailable"})
             return self._respond(start_response, "200 OK", data, content_type="application/javascript; charset=utf-8")
+        if method == "GET" and subpath in ("/push.js", "/sw.js"):
+            name = 'hostkey_push.js' if subpath == '/push.js' else 'sw.js'
+            try:
+                data = ((ROOT / 'server') if name == 'hostkey_push.js' else ROOT).joinpath(name).read_bytes()
+            except OSError:
+                return self._respond(start_response, "503 Service Unavailable", {"ok": False, "error": "Push assets unavailable"})
+            return self._respond(start_response, "200 OK", data, content_type="application/javascript; charset=utf-8")
+        if method == "GET" and subpath == "/manifest.webmanifest":
+            try:
+                return self._respond(start_response, "200 OK", panel_manifest(),
+                                     content_type="application/manifest+json; charset=utf-8")
+            except (OSError, ValueError):
+                return self._respond(start_response, "503 Service Unavailable", {"ok": False, "error": "Manifest unavailable"})
+        if method == "GET" and subpath in ("/push-icon-180.png", "/push-icon-192.png", "/push-icon-512.png"):
+            try:
+                data = (ROOT / subpath.lstrip('/')).read_bytes()
+            except OSError:
+                return self._respond(start_response, "503 Service Unavailable", {"ok": False, "error": "Icon unavailable"})
+            return self._respond(start_response, "200 OK", data, content_type="image/png")
         if method == "GET" and subpath == "/styles.css":
             try:
                 data = (ROOT / "styles.css").read_bytes()
@@ -286,6 +324,24 @@ class Panel:
                                                                     "pilot_enabled": self.ops.enabled,
                                                                     "full_access": self.ops.allow_all,
                                                                     "fast_sync": bool(self.ops.sync_signal_path and self.ops.sync_signal_path.is_file())})
+            if method == 'GET' and subpath == '/api/push/key':
+                return self._respond(start_response, '200 OK',
+                                     {'ok': True, 'public_key': hostkey_push.public_key(self.push_key)})
+            if method == 'GET' and subpath == '/api/push/test-status':
+                ticket = parse_qs(environ.get('QUERY_STRING', '')).get('ticket', [''])[0]
+                return self._respond(start_response, '200 OK',
+                                     {'ok': True, 'state': hostkey_push.test_status(ticket, self.push_db)})
+            if method == 'POST' and subpath.startswith('/api/push/'):
+                payload = self._json_body(environ)
+                if subpath == '/api/push/subscribe':
+                    ident = hostkey_push.subscribe(payload, self.push_db)
+                    return self._respond(start_response, '200 OK', {'ok': True, 'device_id': ident})
+                if subpath == '/api/push/unsubscribe':
+                    hostkey_push.unsubscribe(payload.get('device_id'), self.push_db)
+                    return self._respond(start_response, '200 OK', {'ok': True})
+                if subpath == '/api/push/test':
+                    ticket = hostkey_push.queue_test(payload.get('device_id'), self.push_db)
+                    return self._respond(start_response, '200 OK', {'ok': True, 'ticket': ticket, 'queued': True})
             if method == "POST":
                 action = ACTION_RE.fullmatch(subpath)
                 if action or subpath == "/api/clients":
@@ -306,6 +362,10 @@ class Panel:
         except OperationError as error:
             status = {400: '400 Bad Request', 403: '403 Forbidden', 404: '404 Not Found',
                       409: '409 Conflict'}.get(error.status, '400 Bad Request')
+            return self._respond(start_response, status, {"ok": False, "error": str(error)})
+        except hostkey_push.PushError as error:
+            status = {400:'400 Bad Request',404:'404 Not Found',409:'409 Conflict',
+                      429:'429 Too Many Requests',503:'503 Service Unavailable'}.get(error.status, '400 Bad Request')
             return self._respond(start_response, status, {"ok": False, "error": str(error)})
         except (OSError, sqlite3.Error):
             return self._respond(start_response, "503 Service Unavailable", {"ok": False, "error": "Database unavailable"})
@@ -369,7 +429,7 @@ class Panel:
         headers = [("Content-Type", content_type), ("Content-Length", str(len(body))),
                    ("Cache-Control", "no-store, private"), ("Referrer-Policy", "no-referrer"),
                    ("X-Content-Type-Options", "nosniff"), ("X-Frame-Options", "DENY"),
-                   ("Content-Security-Policy", "default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'")]
+                   ("Content-Security-Policy", "default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self'; manifest-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'")]
         start_response(status, headers)
         return [body]
 

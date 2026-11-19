@@ -72,6 +72,18 @@ class XrayMigrationTests(unittest.TestCase):
         self.assertEqual(info["unmanaged_preserved"], 2)
         self.assertEqual(SAMPLE["inbounds"][0]["settings"]["clients"][0]["id"], "original-test-one")
 
+    def test_expired_clients_are_removed_from_xray_while_lifetime_stays(self):
+        provision(self.db, [1, 2, 3])
+        older, _ = proposed_config(SAMPLE, records(self.db), date(2026, 11, 16))
+        younger, _ = proposed_config(older, records(self.db), date(2026, 11, 19))
+        ids = {row['id'] for row in younger['inbounds'][0]['settings']['clients']}
+        self.assertEqual(len(older['inbounds'][0]['settings']['clients']) - len(ids), 2)
+        self.assertIn('original-test-one', ids)
+        self.assertIn('original-test-two', ids)
+        devices = records(self.db)
+        self.assertTrue(all(row['uuid'] not in ids for row in devices if row['client_id'] == 3))
+        self.assertTrue(all(row['uuid'] in ids for row in devices if row['client_id'] == 2))
+
     def test_wrong_inbound_aborts(self):
         with self.assertRaises(MigrationError):
             proposed_config({"inbounds": []}, [])
