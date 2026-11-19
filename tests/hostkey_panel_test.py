@@ -6,6 +6,7 @@ import tempfile
 import unittest
 
 from server.hostkey_panel import Panel, client_rows, panel_html
+from server.hostkey_panel_ops import PanelOperations
 
 
 class HostkeyPanelTests(unittest.TestCase):
@@ -18,34 +19,35 @@ class HostkeyPanelTests(unittest.TestCase):
         self.code.write_text('test-only-long-code-0123456789abcdefghij\n')
         with sqlite3.connect(self.db) as con:
             con.executescript('''
-                CREATE TABLE clients(id INTEGER PRIMARY KEY, name TEXT, phone TEXT,
+                CREATE TABLE clients(id INTEGER PRIMARY KEY, user_id TEXT, name TEXT, phone TEXT,
                     start_date TEXT, end_date TEXT, period TEXT, note TEXT,
                     created_at TEXT, referrer_id INTEGER, wg_client_id TEXT);
-                CREATE TABLE client_history(id INTEGER PRIMARY KEY, client_id INTEGER,
+                CREATE TABLE client_history(id INTEGER PRIMARY KEY, user_id TEXT, client_id INTEGER,
                     event_type TEXT, description TEXT, created_at TEXT);
                 CREATE TABLE caesar_vless_devices(client_id INTEGER, kind TEXT, uuid TEXT,
                     token TEXT, manually_enabled INTEGER, deployed INTEGER);
                 CREATE TABLE caesar_connect_links(client_id INTEGER, token TEXT);
-                INSERT INTO clients VALUES(33,'me','+000','2026-11-01',NULL,'lifetime',
+                INSERT INTO clients VALUES(33,'owner','me','+000','2026-11-01',NULL,'lifetime',
                     'admin',NULL,NULL,NULL);
-                INSERT INTO clients VALUES(34,'anna',NULL,'2026-11-01','2026-12-01','1m',
+                INSERT INTO clients VALUES(34,'owner','anna',NULL,'2026-11-01','2026-12-01','1m',
                     '',NULL,NULL,NULL);
                 INSERT INTO caesar_vless_devices VALUES(33,'phone','secret-uuid-phone',
                     'secret-token-phone',1,1);
                 INSERT INTO caesar_vless_devices VALUES(33,'pc','secret-uuid-pc',
                     'secret-token-pc',1,0);
                 INSERT INTO caesar_connect_links VALUES(33,'secret-connect-token');
-                INSERT INTO client_history VALUES(1,33,'created','Imported', '2026-11-19');
+                INSERT INTO client_history VALUES(1,'owner',33,'created','Imported', '2026-11-19');
             ''')
         self.panel = Panel(self.db, self.code)
 
-    def request(self, path, method='GET', body=None, token=None, origin='https://vpn.caesarbot.ru'):
+    def request(self, path, method='GET', body=None, token=None, origin='https://vpn.caesarbot.ru', request_id='test-operation-idempotency-123'):
         encoded = json.dumps(body).encode() if body is not None else b''
         environ = {
             'REQUEST_METHOD': method, 'PATH_INFO': '/manager-test' + path,
             'CONTENT_LENGTH': str(len(encoded)), 'wsgi.input': io.BytesIO(encoded),
             'REMOTE_ADDR': '192.0.2.4', 'HTTP_ORIGIN': origin,
             'HTTP_AUTHORIZATION': f'Bearer {token}' if token else '',
+            'HTTP_IDEMPOTENCY_KEY': request_id,
         }
         sent = {}
 
@@ -114,11 +116,32 @@ class HostkeyPanelTests(unittest.TestCase):
         self.assertIn('/manager-test/styles.css', data)
         self.assertNotIn('sqlite-manager.js', data)
         self.assertNotIn('<script src="config.js', data)
-        self.assertIn('Тестовая панель HOSTKEY', data)
+        self.assertIn('Безопасный пилот HOSTKEY', data)
 
     def test_styles_are_allowed_by_csp(self):
         _, _, headers = self.request('/')
         self.assertIn("style-src 'self' 'unsafe-inline'", headers['Content-Security-Policy'])
+
+    def test_write_endpoint_is_allowlisted_origin_bound_and_audited(self):
+        self.panel.ops = PanelOperations(self.db, frozenset({33}), backup_dir=Path(self.temp.name)/'backups')
+        token = self.login()
+        path = '/api/clients/33/edit'
+        status, _, _ = self.request(path,'POST',{'name':'pilot'},origin='https://evil.invalid',token=token)
+        self.assertEqual(status,'403 Forbidden')
+        status, _, _ = self.request('/api/clients/34/edit','POST',{'name':'blocked'},token=token)
+        self.assertEqual(status,'403 Forbidden')
+        status, value, _ = self.request(path,'POST',{'name':'pilot'},token=token)
+        self.assertEqual(status,'200 OK')
+        self.assertTrue(value['ok'])
+        status, value, _ = self.request(path,'POST',{'name':'pilot'},token=token)
+        self.assertEqual(status,'200 OK')  # Idempotent retry.
+        status, value, _ = self.request('/api/clients',token=token)
+        self.assertEqual(status,'200 OK')
+        self.assertEqual(value['clients'][1]['name'],'pilot')
+        self.assertTrue(value['clients'][1]['can_manage'])
+        self.assertFalse(value['clients'][0]['can_manage'])
+        with sqlite3.connect(self.db) as con:
+            self.assertEqual(con.execute('SELECT COUNT(*) FROM client_history WHERE event_type="edited"').fetchone()[0],1)
 
 
 if __name__ == '__main__':
