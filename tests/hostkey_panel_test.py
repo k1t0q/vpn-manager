@@ -84,6 +84,10 @@ class HostkeyPanelTests(unittest.TestCase):
         self.assertEqual(value['clients'][1]['devices']['pc']['deployed'], False)
         self.assertTrue(value['clients'][1]['has_portal'])
         self.assertFalse(value['clients'][0]['has_portal'])
+        self.assertEqual(value['clients'][1]['vpn_state'], 'pending')
+        self.assertEqual(value['clients'][1]['vpn_deployed_keys'], 1)
+        self.assertEqual(value['clients'][1]['vpn_target_keys'], 2)
+        self.assertEqual(value['clients'][0]['vpn_state'], 'none')
         self.assertNotIn('secret-uuid', json.dumps(value))
         self.assertNotIn('secret-token', json.dumps(value))
         self.assertEqual(headers['Cache-Control'], 'no-store, private')
@@ -119,6 +123,24 @@ class HostkeyPanelTests(unittest.TestCase):
         self.assertNotIn('sqlite-manager.js', data)
         self.assertNotIn('<script src="config.js', data)
         self.assertIn('CAESAR VPN MANAGER: защищённое управление', data)
+        self.assertIn('<th>Подписка</th><th>Доступ VPN</th><th>Действия</th>', data)
+
+    def test_vpn_status_never_confuses_paid_status_with_deployed_keys(self):
+        with sqlite3.connect(self.db) as con:
+            con.execute('UPDATE caesar_vless_devices SET deployed=1 WHERE client_id=33')
+        self.assertEqual(client_rows(self.db)[1]['vpn_state'], 'on')
+        with sqlite3.connect(self.db) as con:
+            con.execute('UPDATE caesar_vless_devices SET manually_enabled=0 WHERE client_id=33 AND kind="phone"')
+        self.assertEqual(client_rows(self.db)[1]['vpn_state'], 'pending')
+        with sqlite3.connect(self.db) as con:
+            con.execute('UPDATE caesar_vless_devices SET deployed=0 WHERE client_id=33 AND kind="phone"')
+        self.assertEqual(client_rows(self.db)[1]['vpn_state'], 'partial')
+        with sqlite3.connect(self.db) as con:
+            con.execute('UPDATE clients SET end_date="2020-01-01",period="1m" WHERE id=33')
+        self.assertEqual(client_rows(self.db)[1]['vpn_state'], 'pending')
+        with sqlite3.connect(self.db) as con:
+            con.execute('UPDATE caesar_vless_devices SET deployed=0 WHERE client_id=33')
+        self.assertEqual(client_rows(self.db)[1]['vpn_state'], 'expired')
 
     def test_legacy_panel_url_redirects_to_production(self):
         sent = {}
