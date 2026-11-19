@@ -214,10 +214,11 @@ class PanelOperations:
                              VALUES(?,?,?,?,?,?,?,?)''',
                           (owner['user_id'], name, phone, start.isoformat(), end, period, '', ref))
         new_id = cur.lastrowid
-        con.execute('INSERT INTO caesar_panel_test_created(client_id) VALUES(?)', (new_id,))
+        if not self.allow_all:
+            con.execute('INSERT INTO caesar_panel_test_created(client_id) VALUES(?)', (new_id,))
         row = con.execute('SELECT * FROM clients WHERE id=?', (new_id,)).fetchone()
         self._register(con, row)
-        self.history(con, row, 'created', 'Created in HOSTKEY pilot; two VLESS devices registered')
+        self.history(con, row, 'created', 'Created in HOSTKEY VPN MANAGER; two VLESS devices registered')
         return {'ok': True, 'id': new_id, 'end_date': end, 'sync_pending': True}
 
     def _change(self, con: sqlite3.Connection, row: sqlite3.Row, action: str, data: dict) -> dict:
