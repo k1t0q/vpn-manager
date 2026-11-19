@@ -5,7 +5,7 @@ Install after `git pull` on `xray-hostkey-2026-11` and after the existing
 
 ```bash
 bash /srv/caesar-manager-src/deploy/hostkey-push-stage.sh
-systemctl restart caesar-vless-panel
+systemctl restart caesar-vless-panel caesar-vless-subscriptions
 ```
 
 The installer creates a private VAPID key under
