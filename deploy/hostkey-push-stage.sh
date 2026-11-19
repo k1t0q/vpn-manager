@@ -26,8 +26,20 @@ for entry in "$private" "$public" \
 done
 
 (cd "$src" && python3 -m unittest discover -s tests -p 'hostkey_push_test.py' -q)
-python3 -m venv "$venv"
-"$venv/bin/python" -m pip install --disable-pip-version-check 'pywebpush==2.5.0'
+# Only the VAPID credentials require umask 077. The dedicated root-owned
+# runtime under /opt must remain readable/executable by caesar-manager.
+if [[ -L "$venv" || ( -e "$venv" && ! -d "$venv" ) ]]; then
+  echo "Unexpected push virtual environment path: $venv" >&2
+  exit 2
+fi
+(
+  umask 022
+  python3 -m venv "$venv"
+  "$venv/bin/python" -m pip install --disable-pip-version-check 'pywebpush==2.5.0'
+)
+# Repair permissions from older failed attempts that created the venv while
+# umask was 077. Symlinks to system Python are not traversed by chmod -R.
+chmod -R a+rX "$venv"
 "$venv/bin/python" -c 'import pywebpush,cryptography,requests'
 
 # The private key is created exactly once and never stored in Git or logs.
