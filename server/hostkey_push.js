@@ -114,12 +114,18 @@
     try {
       const {ticket} = await api('test', {device_id: deviceId});
       note('Тест отправлен в очередь. Уведомление придёт примерно в течение минуты.');
+      let confirmed = false;
       for (let attempt = 0; attempt < 20; attempt++) {
         await new Promise(resolve => setTimeout(resolve, 5000));
         const result = await api('test-status?ticket=' + encodeURIComponent(ticket));
-        if (result.state === 'sent') { note('Тест отправлен push-сервисом. Проверьте уведомления телефона.'); break; }
+        if (result.state === 'sent') {
+          confirmed = true;
+          note('Тест отправлен push-сервисом. Проверьте уведомления телефона.');
+          break;
+        }
         if (result.state === 'failed') throw new Error('Не удалось доставить push. Проверьте настройки и повторите.');
       }
+      if (!confirmed) note('Push пока не подтверждён. Проверьте службу отправки на сервере и повторите тест.');
     } catch (error) { note(error.message); }
     finally { busy = false; test.disabled = false; }
   });
