@@ -9,6 +9,7 @@
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   })[ch]);
   const state = {token: sessionStorage.getItem('caesarPanelPilot') || '', clients: [], pilotEnabled: false, writePending: false};
+  const finishBoot = () => document.documentElement.classList.add('caesar-panel-ready');
   const status = (message, error = false) => {
     $('status').textContent = message;
     $('status').className = error ? 'm-error' : 'm-muted';
@@ -166,7 +167,11 @@
       setCreateMode();
       populateReferrers();
       render();
-    } catch (e) { status('Ошибка загрузки: ' + e.message, true); }
+    } catch (e) {
+      // A temporary API outage should leave the refresh/logout controls available.
+      if (state.token) showPanel();
+      status('Ошибка загрузки: ' + e.message, true);
+    }
   }
   async function showLink(id) {
     const client = state.clients.find(c => c.id === Number(id));
@@ -407,5 +412,6 @@
   ['mobileExport','exportCsv'].forEach(id => $(id).addEventListener('click', exportClients));
   $('filter').append(new Option('Архив', 'archive'));
   $('connectLinkDialog').querySelector('details').hidden = true;
-  if (state.token) loadClients();
+  if (state.token) loadClients().finally(finishBoot);
+  else finishBoot();
 })();
