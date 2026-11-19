@@ -45,7 +45,7 @@ class HostkeyPanelTests(unittest.TestCase):
     def request(self, path, method='GET', body=None, token=None, origin='https://vpn.caesarbot.ru', request_id='test-operation-idempotency-123'):
         encoded = json.dumps(body).encode() if body is not None else b''
         environ = {
-            'REQUEST_METHOD': method, 'PATH_INFO': '/manager-test' + path,
+            'REQUEST_METHOD': method, 'PATH_INFO': '/manager' + path,
             'CONTENT_LENGTH': str(len(encoded)), 'wsgi.input': io.BytesIO(encoded),
             'REMOTE_ADDR': '192.0.2.4', 'HTTP_ORIGIN': origin,
             'HTTP_AUTHORIZATION': f'Bearer {token}' if token else '',
@@ -114,11 +114,21 @@ class HostkeyPanelTests(unittest.TestCase):
 
     def test_frontend_has_no_old_awg_scripts(self):
         data = panel_html().decode()
-        self.assertIn('/manager-test/panel.js', data)
-        self.assertIn('/manager-test/styles.css', data)
+        self.assertIn('/manager/panel.js', data)
+        self.assertIn('/manager/styles.css', data)
         self.assertNotIn('sqlite-manager.js', data)
         self.assertNotIn('<script src="config.js', data)
-        self.assertIn('Безопасный пилот HOSTKEY', data)
+        self.assertIn('CAESAR VPN MANAGER: защищённое управление', data)
+
+    def test_legacy_panel_url_redirects_to_production(self):
+        sent = {}
+        def start(status, headers):
+            sent['status'] = status
+            sent['headers'] = dict(headers)
+        body = b''.join(self.panel({'REQUEST_METHOD': 'GET', 'PATH_INFO': '/manager-test/'}, start))
+        self.assertEqual(sent['status'], '308 Permanent Redirect')
+        self.assertEqual(sent['headers']['Location'], '/manager/')
+        self.assertEqual(body, b'')
 
     def test_login_is_hidden_until_existing_session_has_loaded(self):
         data = panel_html().decode()
