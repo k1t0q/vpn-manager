@@ -1,7 +1,8 @@
 """Guarded HOSTKEY billing mutations; Xray remains under the existing timer.
 
-Only explicitly allowlisted pilot clients or newly created TEST clients may be
-modified. Every mutation is idempotent, audited, and backed up before commit.
+Pilot writes are explicitly allowlisted; full writes require a root-owned
+service environment setting after migration checks. Every mutation is
+idempotent, audited, and backed up before commit.
 No user-request thread runs systemctl or edits Xray configuration directly.
 """
 
@@ -72,8 +73,13 @@ class PanelOperations:
         raw = os.environ.get('CAESAR_PANEL_PILOT_IDS', '').strip()
         if raw and not re.fullmatch(r'[1-9][0-9]*(?:,[1-9][0-9]*)*', raw):
             raise RuntimeError('Invalid CAESAR_PANEL_PILOT_IDS')
-        # Full permission is deliberately never activated by a server env var.
-        return cls(db_path, frozenset(int(value) for value in raw.split(',') if value))
+        mode = os.environ.get('CAESAR_PANEL_MODE', 'pilot').strip()
+        if mode not in ('pilot', 'full'):
+            raise RuntimeError('Invalid CAESAR_PANEL_MODE')
+        # Full mode can only be enabled via root's guarded deployment script,
+        # which writes the protected EnvironmentFile after verifying Xray/DB.
+        return cls(db_path, frozenset(int(value) for value in raw.split(',') if value),
+                   allow_all=(mode == 'full'))
 
     @property
     def enabled(self) -> bool:
