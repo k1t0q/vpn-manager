@@ -41,6 +41,16 @@ FRONTEND_SCRIPTS = ('<script src="config.js?v=awg1"></script>'
 PILOT_SCRIPT = '<script src="/manager-test/panel.js"></script>'
 PILOT_STYLE = '''<style>
 /* Billing changes are gated by an explicit per-client pilot allowlist. */
+html:not(.caesar-panel-ready) #loginPane,
+html:not(.caesar-panel-ready) #workspace{visibility:hidden!important}
+#pilotBoot{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;
+background:#0e1015;color:#d9e3f5;font:500 15px system-ui,sans-serif}
+#pilotBoot .pilot-boot-content{display:flex;align-items:center;gap:14px}
+#pilotBoot .pilot-boot-spinner{width:22px;height:22px;border:3px solid #34465d;
+border-top-color:#4c9df9;border-radius:50%;animation:pilot-boot-spin .9s linear infinite}
+@keyframes pilot-boot-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){#pilotBoot .pilot-boot-spinner{animation:none}}
+html.caesar-panel-ready #pilotBoot{display:none}
 #enablePush,#testPush,#disablePush{display:none!important}
 .pilot-note{background:#26364b;border:1px solid #55729b;border-radius:10px;padding:14px;
 margin-bottom:14px;color:#e5edfa;line-height:1.45}
@@ -97,6 +107,9 @@ def panel_html(source: Path = ROOT / "index.html") -> bytes:
     if page.count(FRONTEND_SCRIPTS) != 1:
         raise ValueError("Unexpected old panel scripts; refusing to load legacy AWG JavaScript")
     return (page.replace(FRONTEND_SCRIPTS, PILOT_SCRIPT)
+                .replace('<body>', '<body><div id="pilotBoot" role="status" aria-live="polite">'
+                         '<div class="pilot-boot-content"><span class="pilot-boot-spinner" '
+                         'aria-hidden="true"></span><span>Загружаем VPN MANAGER…</span></div></div>', 1)
                 .replace("AmneziaWG", "VLESS")
                 .replace("CAESAR BOT", "CAESAR VPN")
                 .replace("<h1>VPN MANAGER</h1>", "<h1>VPN MANAGER · HOSTKEY</h1>")
