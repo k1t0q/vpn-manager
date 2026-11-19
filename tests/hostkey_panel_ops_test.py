@@ -64,6 +64,19 @@ class PanelOperationsTests(unittest.TestCase):
             self.assertEqual(rows, [('pc',1,0),('phone',1,0)])
             self.assertEqual(con.execute('SELECT COUNT(*) FROM caesar_connect_links WHERE client_id=?', (new_id,)).fetchone()[0], 1)
 
+    def test_full_mode_creates_real_client_without_pilot_marker(self):
+        full = PanelOperations(self.db, allow_all=True, backup_dir=self.root / 'backups')
+        result = full.execute('create', None, {'name':'Иван Иванов','period':'1m'}, 'full-client-create-20261119')
+        with sqlite3.connect(self.db) as con:
+            self.assertEqual(con.execute('SELECT name FROM clients WHERE id=?',
+                                         (result['id'],)).fetchone()[0], 'Иван Иванов')
+            self.assertEqual(con.execute('SELECT COUNT(*) FROM caesar_vless_devices WHERE client_id=?',
+                                         (result['id'],)).fetchone()[0], 2)
+            self.assertEqual(con.execute('SELECT COUNT(*) FROM caesar_panel_test_created WHERE client_id=?',
+                                         (result['id'],)).fetchone()[0], 0)
+            self.assertIn('VPN MANAGER', con.execute('SELECT description FROM client_history WHERE client_id=?',
+                                                     (result['id'],)).fetchone()[0])
+
     def test_provision_toggle_archive_and_restore_with_uuid_retention(self):
         self.run_action('provision', 93)
         with sqlite3.connect(self.db) as con:
