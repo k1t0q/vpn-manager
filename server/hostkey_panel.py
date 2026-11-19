@@ -166,8 +166,9 @@ class Panel:
                 return self._respond(start_response, "503 Service Unavailable", {"ok": False, "error": "Styles unavailable"})
             return self._respond(start_response, "200 OK", data, content_type="text/css; charset=utf-8")
         if method == "GET" and subpath == "/health":
-            return self._respond(start_response, "200 OK", {"ok": True, "version": "caesar-hostkey-readonly-1",
-                                                                "xray_mode": True, "read_only": not self.ops.enabled})
+            return self._respond(start_response, "200 OK", {"ok": True, "version": "caesar-hostkey-panel-2",
+                                                                "xray_mode": True, "read_only": not self.ops.enabled,
+                                                                "full_access": self.ops.allow_all})
         if method not in ("GET", "POST"):
             return self._respond(start_response, "405 Method Not Allowed", {"ok": False, "error": "Read-only pilot"})
         if method == "POST":
@@ -185,7 +186,8 @@ class Panel:
                 return self._respond(start_response, "200 OK", {"ok": True})
             if method == "GET" and subpath == "/api/clients":
                 return self._respond(start_response, "200 OK", {"ok": True, "clients": client_rows(self.db_path, self.ops),
-                                                                    "pilot_enabled": self.ops.enabled})
+                                                                    "pilot_enabled": self.ops.enabled,
+                                                                    "full_access": self.ops.allow_all})
             if method == "POST":
                 action = ACTION_RE.fullmatch(subpath)
                 if action or subpath == "/api/clients":
