@@ -1,9 +1,11 @@
 import io
 import json
+import os
 from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from server.hostkey_panel import Panel, client_rows, panel_html
 from server.hostkey_panel_ops import PanelOperations
@@ -151,6 +153,29 @@ class HostkeyPanelTests(unittest.TestCase):
         self.assertFalse(value['clients'][0]['can_manage'])
         with sqlite3.connect(self.db) as con:
             self.assertEqual(con.execute('SELECT COUNT(*) FROM client_history WHERE event_type="edited"').fetchone()[0],1)
+
+    def test_full_mode_allows_real_client_creation_and_management(self):
+        with patch.dict(os.environ, {'CAESAR_PANEL_MODE': 'full', 'CAESAR_PANEL_PILOT_IDS': '93'}):
+            self.panel.ops = PanelOperations.from_environment(self.db)
+        token = self.login()
+        status, data, _ = self.request('/api/clients', token=token)
+        self.assertEqual(status, '200 OK')
+        self.assertTrue(data['full_access'])
+        self.assertTrue(all(c['can_manage'] for c in data['clients']))
+        status, result, _ = self.request('/api/clients', 'POST', {
+            'name': 'Обычный клиент', 'period': '1m', 'phone': '+000', 'start_date': '2026-11-19',
+            'referrer_id': None}, token=token, request_id='full-mode-new-client-001')
+        self.assertEqual(status, '201 Created')
+        self.assertTrue(result['ok'])
+        with sqlite3.connect(self.db) as con:
+            self.assertEqual(con.execute('SELECT COUNT(*) FROM caesar_vless_devices WHERE client_id=?',
+                                         (result['id'],)).fetchone()[0], 2)
+        self.assertTrue(list((self.db.parent / 'panel-backups').glob('*.db')))
+
+    def test_unknown_panel_mode_fails_closed(self):
+        with patch.dict(os.environ, {'CAESAR_PANEL_MODE': 'everything'}):
+            with self.assertRaises(RuntimeError):
+                PanelOperations.from_environment(self.db)
 
 
 if __name__ == '__main__':
