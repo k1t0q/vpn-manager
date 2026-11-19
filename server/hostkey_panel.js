@@ -9,7 +9,7 @@
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   })[ch]);
   const state = {token: sessionStorage.getItem('caesarManagerSession') || '', clients: [], pilotEnabled: false,
-    fullAccess: false, writePending: false};
+    fullAccess: false, fastSync: false, writePending: false};
   const finishBoot = () => document.documentElement.classList.add('caesar-panel-ready');
   const status = (message, error = false) => {
     $('status').textContent = message;
@@ -84,8 +84,28 @@
   function deviceState(c, kind) {
     const device = c.devices && c.devices[kind];
     if (!device) return {text: 'не выдан', cls: 'none'};
-    if (!device.allowed) return {text: 'выключен', cls: 'wait'};
-    return device.deployed ? {text: 'работает', cls: 'ok'} : {text: 'ожидает запуска', cls: 'wait'};
+    if (!c.subscription_active) return device.deployed
+      ? {text: 'отключается (срок истёк)', cls: 'wait'} : {text: 'отключён (срок истёк)', cls: 'none'};
+    if (!device.allowed) return device.deployed
+      ? {text: 'отключается', cls: 'wait'} : {text: 'отключён', cls: 'none'};
+    return device.deployed ? {text: 'ключ активен', cls: 'ok'} : {text: 'включается', cls: 'wait'};
+  }
+  function vpnAccess(c) {
+    if (c.archived) return {text: 'Архив', cls: 'off'};
+    if (c.vpn_state === 'pending') {
+      const text = c.vpn_target_keys < c.vpn_deployed_keys ? 'Отключается…' :
+        c.vpn_target_keys > c.vpn_deployed_keys ? 'Включается…' : 'Синхронизация…';
+      return {text: `⏳ ${text}`, cls: 'pending'};
+    }
+    if (c.vpn_state === 'on') return {text: '🟢 Включён · 2/2', cls: 'on'};
+    if (c.vpn_state === 'partial') return {text: '🟡 Включён · 1/2', cls: 'partial'};
+    if (c.vpn_state === 'expired') return {text: '🔴 Отключён · срок истёк', cls: 'expired'};
+    if (c.vpn_state === 'off') return {text: '🔴 Заблокирован', cls: 'off'};
+    return {text: '⚪ Ключи не выданы', cls: 'none'};
+  }
+  function vpnBadge(c) {
+    const a = vpnAccess(c);
+    return `<span class="vpn-access ${a.cls}" title="Доступность ключей в Xray, не онлайн-статус устройства">${a.text}</span>`;
   }
   function devices(c) {
     return ['phone','pc'].map(kind => {
@@ -98,15 +118,19 @@
     if (c.archived) return `<div class="m-actions client-actions">
       <button type="button" data-action="restore" data-id="${c.id}"${locked}>Восстановить</button>
       <button type="button" data-history="${c.id}" class="secondary">История</button></div>`;
-    const phone = deviceState(c,'phone');
-    const pc = deviceState(c,'pc');
+    const phoneEnabled = !!c.devices?.phone?.allowed;
+    const pcEnabled = !!c.devices?.pc?.allowed;
+    const enabled = Object.values(c.devices || {}).some(d => d.allowed);
+    const accessLocked = !c.has_portal || (!enabled && !c.subscription_active);
     return `<div class="m-actions client-actions">
       <button type="button" data-action="edit" data-id="${c.id}"${locked}>Редактировать</button>
       <button type="button" data-action="extend" data-id="${c.id}"${locked}>Продлить</button>
       ${c.has_portal ? `<button type="button" data-link="${c.id}">Личный кабинет</button>` :
         `<button type="button" data-action="provision" data-id="${c.id}"${locked}>Выдать ключи</button>`}
-      <button type="button" data-action="toggle" data-kind="phone" data-id="${c.id}" data-enabled="${phone.text === 'выключен'}"${locked}${c.has_portal ? '' : ' disabled'}>📱 ${phone.text === 'выключен' ? 'Включить' : 'Отключить'}</button>
-      <button type="button" data-action="toggle" data-kind="pc" data-id="${c.id}" data-enabled="${pc.text === 'выключен'}"${locked}${c.has_portal ? '' : ' disabled'}>💻 ${pc.text === 'выключен' ? 'Включить' : 'Отключить'}</button>
+      <button type="button" data-action="access" data-id="${c.id}" data-enabled="${!enabled}"
+        class="${enabled ? 'danger' : 'secondary'}"${locked}${accessLocked ? ' disabled title="Сначала продлите подписку или выдайте ключи"' : ''}>${enabled ? '⛔ Заблокировать VPN' : '✅ Включить VPN'}</button>
+      <button type="button" data-action="toggle" data-kind="phone" data-id="${c.id}" data-enabled="${!phoneEnabled}"${locked}${(!c.has_portal || (!phoneEnabled && !c.subscription_active)) ? ' disabled' : ''}>📱 ${phoneEnabled ? 'Отключить' : 'Включить'}</button>
+      <button type="button" data-action="toggle" data-kind="pc" data-id="${c.id}" data-enabled="${!pcEnabled}"${locked}${(!c.has_portal || (!pcEnabled && !c.subscription_active)) ? ' disabled' : ''}>💻 ${pcEnabled ? 'Отключить' : 'Включить'}</button>
       <button type="button" data-history="${c.id}" class="secondary">История</button>
       <button type="button" data-action="archive" data-id="${c.id}" class="danger"${locked}>Удалить</button>
     </div>`;
@@ -125,6 +149,9 @@
     if (filter === 'referrals') clients = clients.filter(c => !!c.referrer_id);
     if (filter === 'expiry') clients = [...clients].sort((a,b) =>
       (daysRemaining(a) ?? Infinity) - (daysRemaining(b) ?? Infinity));
+    if (filter === 'vpn_on') clients = clients.filter(c => ['on','partial'].includes(c.vpn_state));
+    if (filter === 'vpn_off') clients = clients.filter(c => ['off','expired','none'].includes(c.vpn_state));
+    if (filter === 'vpn_pending') clients = clients.filter(c => c.vpn_state === 'pending');
     return clients;
   }
   function render() {
@@ -145,7 +172,8 @@
         <td><div class="pilot-devices">${devices(c)}</div></td>
         <td>${esc(periodLabel(c.period))}</td><td>${esc(c.start_date || '—')}</td>
         <td>${lifetime(c) ? '∞' : esc(c.end_date || '—')}</td><td>${remaining}</td>
-        <td><span class="status ${c.archived ? 'expired' : state.name}">${c.archived ? 'Архив' : state.label}</span></td><td>${actions(c)}</td></tr>`;
+        <td><span class="status ${c.archived ? 'expired' : state.name}">${c.archived ? 'Архив' : state.label}</span></td>
+        <td>${vpnBadge(c)}</td><td>${actions(c)}</td></tr>`;
     }).join('');
     $('cards').innerHTML = clients.map(c => {
       const s = c.archived ? {label:'Архив',name:'expired'} : stateOf(c);
@@ -153,7 +181,8 @@
       return `<article class="card"><div class="card-top"><div><h3 class="card-client-name">${esc(c.name || 'Без имени')}</h3><small class="m-muted">№ ${c.id} · ${esc(c.phone || 'Без телефона')}</small></div><span class="status ${s.name}">${s.label}</span></div>
         <div class="info"><p>${esc(periodLabel(c.period))} · ${lifetime(c) ? 'Бессрочно' : (days === null ? 'Дата не указана' : `осталось ${Math.max(0,days)} дн.`)}</p>
         <p>${esc(c.start_date || '—')} — ${lifetime(c) ? '∞' : esc(c.end_date || '—')}</p>
-        <div class="pilot-devices">${devices(c)}</div></div><div class="manage"><div class="manage-body">${actions(c)}</div></div></article>`;
+        <p>${vpnBadge(c)}</p><div class="pilot-devices">${devices(c)}</div></div>
+        <div class="manage"><div class="manage-body">${actions(c)}</div></div></article>`;
     }).join('');
     status(`Показано ${clients.length} клиентов · ${state.fullAccess ? 'полное управление' : 'режим просмотра'}`);
   }
@@ -165,6 +194,7 @@
       state.clients = data.clients;
       state.pilotEnabled = !!data.pilot_enabled;
       state.fullAccess = !!data.full_access;
+      state.fastSync = !!data.fast_sync;
       showPanel();
       setCreateMode();
       populateReferrers();
@@ -172,7 +202,9 @@
       const note = document.querySelector('.pilot-note');
       if (note && state.fullAccess) note.textContent = '✅ Управление CAESAR VPN активно. '
         + 'Создание, продление и отключение клиентов выполняются через эту панель. '
-        + 'VPN-права синхронизируются в течение пяти минут; перед каждым изменением сохраняется резервная копия.';
+        + 'VPN-статус показывает доступность ключей, а не факт подключения устройства. '
+        + (state.fastSync ? 'Изменения передаются Xray автоматически сразу; ' : 'Изменения применяются Xray в течение пяти минут; ')
+        + 'перед каждым изменением сохраняется резервная копия.';
     } catch (e) {
       // A temporary API outage should leave the refresh/logout controls available.
       if (state.token) showPanel();
@@ -250,9 +282,21 @@
       // Retries of one request must use the same UUID. One click = one operation.
       const requestId = crypto.randomUUID();
       const path = action === 'create' ? '/api/clients' : `/api/clients/${id}/${action}`;
-      await request(path, {method: 'POST', body: payload, requestId});
+      const result = await request(path, {method: 'POST', body: payload, requestId});
       await loadClients();
-      status(`${label}. Изменение VPN применяется автоматически в течение пяти минут.`);
+      status(`${label}. ${result.fast_sync_requested ? 'Сервер получил запрос на быструю синхронизацию.' : 'Синхронизация VPN — до пяти минут.'}`);
+      if (result.sync_pending) {
+        for (const delay of [2500, 6500, 14000]) {
+          setTimeout(async () => {
+            if (!state.token || state.writePending) return;
+            try {
+              const data = await request('/api/clients');
+              state.clients = data.clients;
+              render();
+            } catch { /* The manual refresh button remains available. */ }
+          }, delay);
+        }
+      }
       return true;
     } catch (e) {
       status(`Ошибка: ${e.message}`, true);
@@ -308,6 +352,13 @@
       const kind = button.dataset.kind;
       if (!confirm(`${enabled ? 'Включить' : 'Отключить'} ${kind === 'phone' ? 'телефон' : 'ПК'} клиента «${client.name}»?`)) return;
       return mutate('toggle', id, {kind,enabled}, `Доступ ${enabled ? 'разрешён' : 'отключён'}`);
+    }
+    if (action === 'access') {
+      const enabled = button.dataset.enabled === 'true';
+      const explanation = enabled ? 'Восстановить доступ обоим устройствам' :
+        'Заблокировать оба VPN-ключа, сохранив подписку и персональную ссылку';
+      if (!confirm(`${explanation} для «${client.name}»?`)) return;
+      return mutate('access', id, {enabled}, enabled ? 'VPN-доступ разрешён' : 'VPN-доступ заблокирован');
     }
     if (action === 'archive') {
       const typed = prompt(`Архивирование отзовёт ссылки и оба VLESS-ключа клиента.\nДля подтверждения введите его имя точно:\n${client.name}`);
@@ -414,6 +465,9 @@
     setTimeout(() => URL.revokeObjectURL(url), 30000);
   };
   ['mobileExport','exportCsv'].forEach(id => $(id).addEventListener('click', exportClients));
+  $('filter').append(new Option('VPN включён', 'vpn_on'));
+  $('filter').append(new Option('VPN отключён', 'vpn_off'));
+  $('filter').append(new Option('VPN — ожидает применения', 'vpn_pending'));
   $('filter').append(new Option('Архив', 'archive'));
   $('connectLinkDialog').querySelector('details').hidden = true;
   if (state.token) loadClients().finally(finishBoot);
