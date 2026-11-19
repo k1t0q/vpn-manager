@@ -8,7 +8,8 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   })[ch]);
-  const state = {token: sessionStorage.getItem('caesarPanelPilot') || '', clients: [], pilotEnabled: false, writePending: false};
+  const state = {token: sessionStorage.getItem('caesarPanelPilot') || '', clients: [], pilotEnabled: false,
+    fullAccess: false, writePending: false};
   const finishBoot = () => document.documentElement.classList.add('caesar-panel-ready');
   const status = (message, error = false) => {
     $('status').textContent = message;
@@ -154,7 +155,8 @@
         <p>${esc(c.start_date || '—')} — ${lifetime(c) ? '∞' : esc(c.end_date || '—')}</p>
         <div class="pilot-devices">${devices(c)}</div></div><div class="manage"><div class="manage-body">${actions(c)}</div></div></article>`;
     }).join('');
-    status(`Показано ${clients.length} клиентов · ${state.pilotEnabled ? 'изменения разрешены только тестовым клиентам' : 'режим просмотра'}`);
+    status(`Показано ${clients.length} клиентов · ${state.fullAccess ? 'полное управление' :
+      (state.pilotEnabled ? 'изменения разрешены только тестовым клиентам' : 'режим просмотра')}`);
   }
 
   async function loadClients() {
@@ -163,10 +165,15 @@
       const data = await request('/api/clients');
       state.clients = data.clients;
       state.pilotEnabled = !!data.pilot_enabled;
+      state.fullAccess = !!data.full_access;
       showPanel();
       setCreateMode();
       populateReferrers();
       render();
+      const note = document.querySelector('.pilot-note');
+      if (note && state.fullAccess) note.textContent = '✅ Управление CAESAR VPN активно. '
+        + 'Создание, продление и отключение клиентов выполняются через эту панель. '
+        + 'VPN-права синхронизируются в течение пяти минут; перед каждым изменением сохраняется резервная копия.';
     } catch (e) {
       // A temporary API outage should leave the refresh/logout controls available.
       if (state.token) showPanel();
@@ -210,14 +217,16 @@
     if (periodSelect.value === 'trial') periodSelect.value = '1m';
     const section = form.closest('.create-client-section');
     const heading = section.querySelector('h2');
-    heading.textContent = 'Добавить тестового клиента';
-    form.querySelector('[name="name"]').placeholder = 'TEST Имя';
+    heading.textContent = state.fullAccess ? 'Добавить клиента' : 'Добавить тестового клиента';
+    form.querySelector('[name="name"]').placeholder = state.fullAccess ? 'Имя клиента' : 'TEST Имя';
     if (!section.querySelector('.pilot-create-hint')) {
       const tip = document.createElement('p');
       tip.className = 'm-muted pilot-create-hint';
-      tip.textContent = 'Пока разрешены только имена с TEST или ТЕСТ. Два ключа создаются автоматически.';
       section.append(tip);
     }
+    section.querySelector('.pilot-create-hint').textContent = state.fullAccess
+      ? 'При создании автоматически выдаются два индивидуальных ключа: телефон и ПК.'
+      : 'Пока разрешены только имена с TEST или ТЕСТ. Два ключа создаются автоматически.';
   }
 
   function populateReferrers() {
@@ -357,7 +366,7 @@
       period: String(data.get('period') || ''),
       referrer_id: data.get('referrer_id') ? Number(data.get('referrer_id')) : null
     };
-    if (!/^(?:TEST|ТЕСТ)(?:\s|$)/i.test(payload.name)) {
+    if (!state.fullAccess && !/^(?:TEST|ТЕСТ)(?:\s|$)/i.test(payload.name)) {
       status('В тестовом режиме имя должно начинаться с TEST или ТЕСТ', true);
       return;
     }
