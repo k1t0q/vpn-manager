@@ -182,6 +182,7 @@
       return `<article class="card"><div class="card-top"><div><h3 class="card-client-name">${esc(c.name || 'Без имени')}</h3><small class="m-muted">№ ${c.id} · ${esc(c.phone || 'Без телефона')}</small></div><span class="status ${s.name}">${s.label}</span></div>
         <div class="info"><p>${esc(periodLabel(c.period))} · ${lifetime(c) ? 'Бессрочно' : (days === null ? 'Дата не указана' : `осталось ${Math.max(0,days)} дн.`)}</p>
         <p>${esc(c.start_date || '—')} — ${lifetime(c) ? '∞' : esc(c.end_date || '—')}</p>
+        <p>Пригласил: ${esc(findReferrer(c.referrer_id))}</p>
         <p>${vpnBadge(c)}</p><div class="pilot-devices">${devices(c)}</div></div>
         <div class="manage"><div class="manage-body">${actions(c)}</div></div></article>`;
     }).join('');

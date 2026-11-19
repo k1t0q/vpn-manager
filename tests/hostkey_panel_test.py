@@ -132,6 +132,10 @@ class HostkeyPanelTests(unittest.TestCase):
         self.assertIn('.m-scroll.desktop th:last-child,.m-scroll.desktop td:last-child', data)
         self.assertIn('position:sticky;right:0', data)
         self.assertIn('.m-scroll.desktop .client-actions{display:grid;', data)
+        self.assertIn('max-width:1920px', data)
+        self.assertIn('max-width:1650px', data)
+        self.assertIn('max-width:1350px', data)
+        self.assertIn('Пригласил: ${esc(findReferrer(c.referrer_id))}', panel_js)
 
     def test_vpn_status_never_confuses_paid_status_with_deployed_keys(self):
         with sqlite3.connect(self.db) as con:

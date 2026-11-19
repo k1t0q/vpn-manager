@@ -72,27 +72,51 @@ font-size:12px;font-weight:750;white-space:nowrap;background:#243045;color:#dce8
 .subscription-cell strong{font-size:13px;font-weight:750}
 .subscription-cell .status{display:inline-block}
 .client-actions [data-action="access"].danger{background:#673237;color:#ffe3e5;border-color:#a35258}
-/* Keep every client action visible even when the billing table overflows. */
+/* Use the available desktop width instead of leaving large empty side margins. */
+.m-wrap{width:100%;max-width:1920px;padding:0 18px 26px}
+.m-grid.layout{grid-template-columns:290px minmax(0,1fr)}
+/* Keep every column readable and prevent the action column from covering data. */
 .m-scroll.desktop{position:relative;max-width:100%;overflow-x:auto}
-.m-scroll.desktop table{table-layout:fixed;min-width:1350px}
-.m-scroll.desktop th,.m-scroll.desktop td{overflow-wrap:anywhere}
-.m-scroll.desktop th:nth-child(1),.m-scroll.desktop td:nth-child(1){width:132px}
-.m-scroll.desktop th:nth-child(2),.m-scroll.desktop td:nth-child(2){width:90px}
-.m-scroll.desktop th:nth-child(3),.m-scroll.desktop td:nth-child(3){width:90px}
-.m-scroll.desktop th:nth-child(4),.m-scroll.desktop td:nth-child(4){width:150px}
-.m-scroll.desktop th:nth-child(5),.m-scroll.desktop td:nth-child(5){width:92px}
-.m-scroll.desktop th:nth-child(6),.m-scroll.desktop td:nth-child(6){width:94px}
-.m-scroll.desktop th:nth-child(7),.m-scroll.desktop td:nth-child(7){width:94px}
-.m-scroll.desktop th:nth-child(8),.m-scroll.desktop td:nth-child(8){width:118px}
+.m-scroll.desktop table{table-layout:fixed;min-width:1230px}
+.m-scroll.desktop th,.m-scroll.desktop td{overflow-wrap:anywhere;padding:9px 7px;font-size:12px}
+.m-scroll.desktop th:nth-child(1),.m-scroll.desktop td:nth-child(1){width:128px}
+.m-scroll.desktop th:nth-child(2),.m-scroll.desktop td:nth-child(2){width:84px}
+.m-scroll.desktop th:nth-child(3),.m-scroll.desktop td:nth-child(3){width:84px}
+.m-scroll.desktop th:nth-child(4),.m-scroll.desktop td:nth-child(4){width:142px}
+.m-scroll.desktop th:nth-child(5),.m-scroll.desktop td:nth-child(5){width:90px}
+.m-scroll.desktop th:nth-child(6),.m-scroll.desktop td:nth-child(6){width:90px}
+.m-scroll.desktop th:nth-child(7),.m-scroll.desktop td:nth-child(7){width:90px}
+.m-scroll.desktop th:nth-child(8),.m-scroll.desktop td:nth-child(8){width:114px}
 .m-scroll.desktop th:nth-child(9),.m-scroll.desktop td:nth-child(9){width:152px}
 .m-scroll.desktop th:last-child,.m-scroll.desktop td:last-child{
-position:sticky;right:0;z-index:2;width:270px;min-width:270px;max-width:270px;
+position:sticky;right:0;z-index:2;width:256px;min-width:256px;max-width:256px;
 background:#191d25;box-shadow:-9px 0 16px #0e1015b0,inset 1px 0 #303744}
 .m-scroll.desktop th:last-child{z-index:3;background:#20252e}
 .m-scroll.desktop tr:hover td:last-child{background:#202733}
 .m-scroll.desktop .client-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
 .m-scroll.desktop .client-actions button{width:100%;min-width:0;min-height:34px;
 padding:6px 4px;font-size:11px;white-space:normal;overflow-wrap:anywhere;line-height:1.2}
+/* On medium desktops move the create form above the table: no hidden columns. */
+@media (min-width:901px) and (max-width:1650px){
+.m-grid.layout{grid-template-columns:minmax(0,1fr)}
+.m-grid.layout>aside{padding:14px 16px}
+.m-grid.layout>aside #create.form.body{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));align-items:end;gap:9px}
+.m-grid.layout>aside #create label{margin:0;min-width:0}
+.m-grid.layout>aside #create button[type="submit"]{min-width:0;min-height:46px;padding:8px 5px}
+.m-grid.layout>aside section[aria-label="Push-уведомления"]{margin-top:8px!important}
+}
+@media (min-width:901px) and (max-width:1180px){
+.m-grid.layout>aside #create.form.body{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+/* Cards retain all details when the table would need horizontal scrolling. */
+@media (min-width:801px) and (max-width:1350px){
+.m-scroll.desktop{display:none}
+.m-grid.layout .cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.m-grid.layout .card .manage-body{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.m-grid.layout .card .m-actions{display:contents}
+.m-grid.layout .card .m-actions button{width:100%;white-space:normal;min-height:40px;padding:8px 6px}
+}
+@media (max-width:900px){.m-grid.layout{grid-template-columns:1fr}}
 </style>'''
 
 
