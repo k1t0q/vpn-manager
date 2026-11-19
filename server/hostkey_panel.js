@@ -200,12 +200,6 @@
       setCreateMode();
       populateReferrers();
       render();
-      const note = document.querySelector('.pilot-note');
-      if (note && state.fullAccess) note.textContent = '✅ Управление CAESAR VPN активно. '
-        + 'Создание, продление и отключение клиентов выполняются через эту панель. '
-        + 'VPN-статус показывает доступность ключей, а не факт подключения устройства. '
-        + (state.fastSync ? 'Изменения передаются Xray автоматически сразу; ' : 'Изменения применяются Xray в течение пяти минут; ')
-        + 'перед каждым изменением сохраняется резервная копия.';
     } catch (e) {
       // A temporary API outage should leave the refresh/logout controls available.
       if (state.token) showPanel();
@@ -219,8 +213,6 @@
       const data = await request(`/api/clients/${id}/link`);
       $('connectClientLabel').textContent = client.name || `Клиент №${id}`;
       $('connectLinkValue').value = data.url;
-      $('connectCodeValue').value = 'Код не требуется';
-      $('connectCodeValue').readOnly = true;
       $('connectLinkDialog').showModal();
     } catch (e) {status('Не удалось получить ссылку: ' + e.message, true);}
   }
@@ -412,6 +404,16 @@
     try {await navigator.clipboard.writeText($('connectLinkValue').value); status('Ссылка скопирована');}
     catch { $('connectLinkValue').select(); status('Скопируйте выделенную ссылку'); }
   });
+  $('openConnectLink').addEventListener('click', () => {
+    const url = $('connectLinkValue').value;
+    // The personal URL is a bearer credential. Open only the fixed HTTPS
+    // subscription portal and never give the new page an opener/referrer.
+    if (!/^https:\/\/vpn\.caesarbot\.ru\/connect\/[A-Za-z0-9_-]{32,64}$/.test(url)) {
+      status('Некорректная ссылка на личный кабинет', true);
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  });
   $('create').addEventListener('submit', async e => {
     e.preventDefault();
     if (!state.fullAccess) return;
@@ -454,7 +456,6 @@
   $('closeExtend').addEventListener('click', () => $('extendDialog').close());
   $('referralForm').addEventListener('submit', e => e.preventDefault());
   $('confirmReferral').disabled = true;
-  $('copyConnectCode').disabled = true;
   const exportClients = () => {
     if (!state.clients.length) return;
     const columns = ['id','name','phone','period','start_date','end_date','referrer_id'];

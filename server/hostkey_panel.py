@@ -59,8 +59,6 @@ html.caesar-panel-ready #pilotBoot{display:none}
 #pushStatus{line-height:1.45}
 #enablePush,#testPush,#disablePush{margin:4px 0}
 #enablePush[hidden],#testPush[hidden],#disablePush[hidden]{display:none!important}
-.pilot-note{background:#26364b;border:1px solid #55729b;border-radius:10px;padding:14px;
-margin-bottom:14px;color:#e5edfa;line-height:1.45}
 .pilot-devices{display:grid;gap:4px;text-align:left;font-size:12px}
 .pilot-device-ok{color:#65d8a1}.pilot-device-wait{color:#f7c670}
 .pilot-device-none{color:#aeb4c2}.pilot-copy{font-size:12px}
@@ -213,13 +211,13 @@ def panel_html(source: Path = ROOT / "index.html") -> bytes:
                 .replace("</head>", PILOT_STYLE + "</head>", 1)
                 .replace('Введите код администратора для управления VPN.',
                          'Введите код администратора CAESAR VPN для входа в HOSTKEY.')
-                .replace('<div class="m-grid layout">',
-                         '<p class="pilot-note">🔒 CAESAR VPN MANAGER: защищённое управление клиентами. '
-                         'Изменения VPN применяются автоматически в течение пяти минут, '
-                         'перед каждым изменением сохраняется резервная копия.</p>'
-                         '<div class="m-grid layout">', 1)
                 .replace('id="pushStatus" class="m-muted">За 7, 3 и 1 день до окончания подписки.',
                          'id="pushStatus" class="m-muted">Включите push, чтобы получать напоминания за 7, 3 и 1 день, а также об окончании подписки.')
+                .replace('Передайте клиенту персональную ссылку и код доступа.',
+                         'Передайте клиенту персональную ссылку.')
+                .replace('<label>Код доступа<input id="connectCodeValue" readonly autocomplete="off" autocapitalize="off" spellcheck="false" style="width:100%;letter-spacing:2px"></label>', '')
+                .replace('<button id="copyConnectCode" type="button">Скопировать код</button>',
+                         '<button id="openConnectLink" type="button">Перейти по ссылке</button>')
                 .replace('<th>VLESS</th>', '<th>Телефон / ПК</th>')
                 .replace('<th>Осталось дней</th><th>Статус</th><th>Действия</th>',
                          '<th>Осталось дней</th><th>Доступ VPN</th><th>Действия</th>')

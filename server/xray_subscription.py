@@ -154,7 +154,7 @@ def landing_html(row) -> str:
 <meta name="robots" content="noindex,nofollow"><title>CAESAR VPN — Подключение</title>
 <style>
 *{{box-sizing:border-box}}body{{margin:0;min-height:100vh;display:grid;place-items:center;background:#10131a;color:#f7f8fd;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;padding:24px}}
-main{{width:min(100%,480px);padding:34px 28px;border:1px solid #30394b;border-radius:22px;background:linear-gradient(150deg,#1c2433,#141821);box-shadow:0 18px 55px #0006}}
+main{{width:min(100%,480px);padding:22px 28px 18px;border:1px solid #30394b;border-radius:22px;background:linear-gradient(150deg,#1c2433,#141821);box-shadow:0 18px 55px #0006}}
 h1{{margin:0;font-size:32px;letter-spacing:1px}}.client-number{{display:inline-flex;align-items:center;gap:6px;margin-top:13px;padding:7px 11px;border-radius:9px;background:#2b3d59;color:#dbe8ff;font-size:13px}}.client-number strong{{color:#fff;font-size:15px}}.plan{{margin:26px 0 22px;padding:17px 16px;border:1px solid #3b4a60;border-radius:12px;background:#202a3a;color:#d7e3f4}}
 .unlimited{{display:flex;align-items:center;gap:15px}}.unlimited strong{{display:block;font-size:17px}}.unlimited small{{display:block;margin-top:4px;color:#9dadc6}}.infinity{{font-size:36px;color:#84a6ff;line-height:1}}
 .plan-header{{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}}.plan-header span{{font-size:13px;color:#9dadc6}}.progress{{height:9px;margin-top:15px;background:#11192a;border-radius:999px;overflow:hidden}}.progress-fill{{height:100%;border-radius:inherit;background:linear-gradient(90deg,#5c88ff,#91a8ff)}}
