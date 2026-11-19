@@ -116,6 +116,10 @@ class HostkeyPanelTests(unittest.TestCase):
         self.assertNotIn('<script src="config.js', data)
         self.assertIn('Тестовая панель HOSTKEY', data)
 
+    def test_styles_are_allowed_by_csp(self):
+        _, _, headers = self.request('/')
+        self.assertIn("style-src 'self' 'unsafe-inline'", headers['Content-Security-Policy'])
+
 
 if __name__ == '__main__':
     unittest.main()
