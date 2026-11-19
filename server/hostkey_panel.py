@@ -69,6 +69,28 @@ font-size:12px;font-weight:750;white-space:nowrap;background:#243045;color:#dce8
 .vpn-access.none{color:#aeb4c2}
 .vpn-access-help{font-size:11px;color:#aeb4c2;margin-top:5px;line-height:1.35}
 .client-actions [data-action="access"].danger{background:#673237;color:#ffe3e5;border-color:#a35258}
+/* Keep every client action visible even when the billing table overflows. */
+.m-scroll.desktop{position:relative;max-width:100%;overflow-x:auto}
+.m-scroll.desktop table{table-layout:fixed;min-width:1350px}
+.m-scroll.desktop th,.m-scroll.desktop td{overflow-wrap:anywhere}
+.m-scroll.desktop th:nth-child(1),.m-scroll.desktop td:nth-child(1){width:132px}
+.m-scroll.desktop th:nth-child(2),.m-scroll.desktop td:nth-child(2){width:90px}
+.m-scroll.desktop th:nth-child(3),.m-scroll.desktop td:nth-child(3){width:90px}
+.m-scroll.desktop th:nth-child(4),.m-scroll.desktop td:nth-child(4){width:150px}
+.m-scroll.desktop th:nth-child(5),.m-scroll.desktop td:nth-child(5){width:92px}
+.m-scroll.desktop th:nth-child(6),.m-scroll.desktop td:nth-child(6){width:94px}
+.m-scroll.desktop th:nth-child(7),.m-scroll.desktop td:nth-child(7){width:94px}
+.m-scroll.desktop th:nth-child(8),.m-scroll.desktop td:nth-child(8){width:76px}
+.m-scroll.desktop th:nth-child(9),.m-scroll.desktop td:nth-child(9){width:84px}
+.m-scroll.desktop th:nth-child(10),.m-scroll.desktop td:nth-child(10){width:152px}
+.m-scroll.desktop th:last-child,.m-scroll.desktop td:last-child{
+position:sticky;right:0;z-index:2;width:270px;min-width:270px;max-width:270px;
+background:#191d25;box-shadow:-9px 0 16px #0e1015b0,inset 1px 0 #303744}
+.m-scroll.desktop th:last-child{z-index:3;background:#20252e}
+.m-scroll.desktop tr:hover td:last-child{background:#202733}
+.m-scroll.desktop .client-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+.m-scroll.desktop .client-actions button{width:100%;min-width:0;min-height:34px;
+padding:6px 4px;font-size:11px;white-space:normal;overflow-wrap:anywhere;line-height:1.2}
 </style>'''
 
 
