@@ -352,7 +352,7 @@
       period: String(data.get('period') || ''),
       referrer_id: data.get('referrer_id') ? Number(data.get('referrer_id')) : null
     };
-    if (!/^(TEST|ТЕСТ)\b/i.test(payload.name)) {
+    if (!/^(?:TEST|ТЕСТ)(?:\s|$)/i.test(payload.name)) {
       status('В тестовом режиме имя должно начинаться с TEST или ТЕСТ', true);
       return;
     }
