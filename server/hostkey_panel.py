@@ -21,8 +21,10 @@ from wsgiref.simple_server import make_server, WSGIRequestHandler
 
 try:
     from .hostkey_panel_ops import PanelOperations, OperationError
+    from .xray_hostkey import active_subscription
 except ImportError:
     from hostkey_panel_ops import PanelOperations, OperationError
+    from xray_hostkey import active_subscription
 
 
 PREFIX = "/manager"
@@ -35,7 +37,7 @@ MAX_BODY = 4096
 TOKEN_RE = re.compile(r"^Bearer ([A-Za-z0-9_-]{30,100})$")
 LINK_RE = re.compile(r"^/api/clients/([1-9][0-9]*)/link$")
 HISTORY_RE = re.compile(r"^/api/clients/([1-9][0-9]*)/history$")
-ACTION_RE = re.compile(r"^/api/clients/([1-9][0-9]*)/(edit|extend|toggle|provision|archive|restore)$")
+ACTION_RE = re.compile(r"^/api/clients/([1-9][0-9]*)/(edit|extend|toggle|access|provision|archive|restore)$")
 FRONTEND_SCRIPTS = ('<script src="config.js?v=awg1"></script>'
                     '<script src="sqlite-manager.js?v=alignment1"></script>'
                     '<script src="push-manager.js?v=push1"></script>')
@@ -58,6 +60,15 @@ margin-bottom:14px;color:#e5edfa;line-height:1.45}
 .pilot-devices{display:grid;gap:4px;text-align:left;font-size:12px}
 .pilot-device-ok{color:#65d8a1}.pilot-device-wait{color:#f7c670}
 .pilot-device-none{color:#aeb4c2}.pilot-copy{font-size:12px}
+.vpn-access{display:inline-flex;align-items:center;gap:5px;border-radius:8px;padding:6px 9px;
+font-size:12px;font-weight:750;white-space:nowrap;background:#243045;color:#dce8ff}
+.vpn-access.on{background:#16372e;color:#69e0ac}
+.vpn-access.partial{background:#45381e;color:#ffd17e}
+.vpn-access.off,.vpn-access.expired{background:#40262a;color:#ff979d}
+.vpn-access.pending{background:#3b3150;color:#ceacff}
+.vpn-access.none{color:#aeb4c2}
+.vpn-access-help{font-size:11px;color:#aeb4c2;margin-top:5px;line-height:1.35}
+.client-actions [data-action="access"].danger{background:#673237;color:#ffe3e5;border-color:#a35258}
 </style>'''
 
 
@@ -80,11 +91,36 @@ def client_rows(db_path: Path, operations: PanelOperations | None = None) -> lis
     for d in devices:
         device_map[d["client_id"]][d["kind"]] = {"allowed": bool(d["manually_enabled"]),
                                                  "deployed": bool(d["deployed"])}
-    return [{**dict(c), "devices": device_map[c["id"]],
-             "has_portal": len(device_map[c["id"]]) == 2,
-             "archived": c["id"] in archived,
-             "can_manage": (operations.allow_all if operations else False) or c["id"] in allowed}
-            for c in clients]
+    result = []
+    for c in clients:
+        device_states = device_map[c['id']]
+        is_archived = c['id'] in archived
+        paid = active_subscription(c['period'], c['end_date'])
+        deployed = sum(bool(d['deployed']) for d in device_states.values())
+        target = sum(bool(d['allowed']) and paid and not is_archived for d in device_states.values())
+        mismatch = any(bool(d['deployed']) != (bool(d['allowed']) and paid and not is_archived)
+                       for d in device_states.values())
+        if mismatch:
+            vpn_state = 'pending'
+        elif not device_states:
+            vpn_state = 'none'
+        elif not paid:
+            vpn_state = 'expired'
+        elif deployed == 2:
+            vpn_state = 'on'
+        elif deployed == 1:
+            vpn_state = 'partial'
+        else:
+            vpn_state = 'off'
+        result.append({**dict(c), 'devices': device_states,
+                       'has_portal': len(device_states) == 2,
+                       'subscription_active': paid,
+                       'vpn_state': vpn_state,
+                       'vpn_deployed_keys': deployed,
+                       'vpn_target_keys': target,
+                       'archived': is_archived,
+                       'can_manage': (operations.allow_all if operations else False) or c['id'] in allowed})
+    return result
 
 
 def personal_link(db_path: Path, client_id: int) -> str | None:
@@ -128,6 +164,8 @@ def panel_html(source: Path = ROOT / "index.html") -> bytes:
                 .replace('id="pushStatus" class="m-muted">За 7, 3 и 1 день до окончания подписки.',
                          'id="pushStatus" class="m-muted">Уведомления включим после запуска панели.')
                 .replace('<th>VLESS</th>', '<th>Телефон / ПК</th>')
+                .replace('<th>Статус</th><th>Действия</th>',
+                         '<th>Подписка</th><th>Доступ VPN</th><th>Действия</th>')
                 ).encode("utf-8")
 
 
@@ -178,7 +216,8 @@ class Panel:
         if method == "GET" and subpath == "/health":
             return self._respond(start_response, "200 OK", {"ok": True, "version": "caesar-hostkey-panel-2",
                                                                 "xray_mode": True, "read_only": not self.ops.enabled,
-                                                                "full_access": self.ops.allow_all})
+                                                                "full_access": self.ops.allow_all,
+                                                                "fast_sync": bool(self.ops.sync_signal_path and self.ops.sync_signal_path.is_file())})
         if method not in ("GET", "POST"):
             return self._respond(start_response, "405 Method Not Allowed", {"ok": False, "error": "Method not allowed"})
         if method == "POST":
@@ -197,7 +236,8 @@ class Panel:
             if method == "GET" and subpath == "/api/clients":
                 return self._respond(start_response, "200 OK", {"ok": True, "clients": client_rows(self.db_path, self.ops),
                                                                     "pilot_enabled": self.ops.enabled,
-                                                                    "full_access": self.ops.allow_all})
+                                                                    "full_access": self.ops.allow_all,
+                                                                    "fast_sync": bool(self.ops.sync_signal_path and self.ops.sync_signal_path.is_file())})
             if method == "POST":
                 action = ACTION_RE.fullmatch(subpath)
                 if action or subpath == "/api/clients":
