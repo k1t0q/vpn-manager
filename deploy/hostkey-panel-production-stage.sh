@@ -22,7 +22,7 @@ if ! grep -qx 'CAESAR_PANEL_PILOT_IDS=93' "$env_path" && ! grep -qx 'CAESAR_PANE
   echo 'Unexpected panel mode; refusing promotion' >&2
   exit 2
 fi
-if grep -Ev '^(CAESAR_PANEL_PILOT_IDS=93|CAESAR_PANEL_MODE=full)$' "$env_path" | grep -q .; then
+if grep -Ev '^(CAESAR_PANEL_PILOT_IDS=93|CAESAR_PANEL_MODE=full|CAESAR_XRAY_FAST_SYNC_SIGNAL=/var/lib/caesar-manager/fast-sync.signal)$' "$env_path" | grep -q .; then
   echo 'Unrecognized panel settings; refusing promotion' >&2
   exit 2
 fi
@@ -65,6 +65,9 @@ python3 "$src/deploy/hostkey-panel-production-caddy.py" --apply
 new_env="$(mktemp /etc/caesar/.manager-production.XXXXXXXX)"
 chmod 0600 "$new_env"
 printf 'CAESAR_PANEL_MODE=full\n' > "$new_env"
+if grep -qx 'CAESAR_XRAY_FAST_SYNC_SIGNAL=/var/lib/caesar-manager/fast-sync.signal' "$env_path"; then
+  printf 'CAESAR_XRAY_FAST_SYNC_SIGNAL=/var/lib/caesar-manager/fast-sync.signal\n' >> "$new_env"
+fi
 mv "$new_env" "$env_path"
 install -m 0644 "$source_unit" "$panel_unit"
 systemctl daemon-reload
