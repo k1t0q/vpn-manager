@@ -1,0 +1,11 @@
+[Unit]
+Description=Reconcile CAESAR VPN VLESS permissions with current subscriptions
+After=xray.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/bin/python3 /srv/caesar-manager-src/server/xray_hostkey.py sync --apply
+UMask=0077
+NoNewPrivileges=true
