@@ -75,5 +75,13 @@ class SubscriptionTests(unittest.TestCase):
         self.assertNotIn(b"original-test", result["body"])
 
 
+    def test_mobile_landing_is_top_aligned_without_affecting_desktop(self):
+        page = self.request("/connect/" + self.landing_token)["body"].decode("utf-8")
+        self.assertIn("@media (max-width:600px)", page)
+        self.assertIn("body{display:block;min-height:100svh;padding:28px 18px 36px}", page)
+        self.assertIn("main{margin:0 auto}", page)
+        self.assertIn("body{margin:0;min-height:100vh;display:grid;place-items:center", page)
+
+
 if __name__ == "__main__":
     unittest.main()
