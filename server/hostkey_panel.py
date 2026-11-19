@@ -1,4 +1,4 @@
-"""HOSTKEY VPN MANAGER with explicit per-client pilot write authorization.
+"""CAESAR VPN MANAGER with protected production billing operations.
 
 The service never changes Xray/Caddy directly. SQLite writes are allowlisted,
 idempotent and backed up; the existing Xray reconciliation timer applies them.
@@ -25,7 +25,8 @@ except ImportError:
     from hostkey_panel_ops import PanelOperations, OperationError
 
 
-PREFIX = "/manager-test"
+PREFIX = "/manager"
+LEGACY_PREFIX = "/manager-test"
 ROOT = Path(__file__).resolve().parents[1]
 DB = Path(os.environ.get("CAESAR_DB", "/var/lib/caesar-manager/clients.db"))
 CODE_FILE = Path(os.environ.get("CAESAR_PANEL_CODE_FILE", "/var/lib/caesar-manager/panel-code"))
@@ -38,9 +39,9 @@ ACTION_RE = re.compile(r"^/api/clients/([1-9][0-9]*)/(edit|extend|toggle|provisi
 FRONTEND_SCRIPTS = ('<script src="config.js?v=awg1"></script>'
                     '<script src="sqlite-manager.js?v=alignment1"></script>'
                     '<script src="push-manager.js?v=push1"></script>')
-PILOT_SCRIPT = '<script src="/manager-test/panel.js"></script>'
+PILOT_SCRIPT = '<script src="/manager/panel.js"></script>'
 PILOT_STYLE = '''<style>
-/* Billing changes are gated by an explicit per-client pilot allowlist. */
+/* Hide protected content until the session status is known. */
 html:not(.caesar-panel-ready) #loginPane,
 html:not(.caesar-panel-ready) #workspace{visibility:hidden!important}
 #pilotBoot{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;
@@ -113,16 +114,16 @@ def panel_html(source: Path = ROOT / "index.html") -> bytes:
                 .replace("AmneziaWG", "VLESS")
                 .replace("CAESAR BOT", "CAESAR VPN")
                 .replace("<h1>VPN MANAGER</h1>", "<h1>VPN MANAGER · HOSTKEY</h1>")
-                .replace("Версия v1.80 · 13.11.2026", "Пилот управления · VLESS · HOSTKEY")
+                .replace("Версия v1.80 · 13.11.2026", "CAESAR VPN · VLESS · HOSTKEY")
                 .replace('<link rel="stylesheet" href="styles.css?v=5.16">',
-                         '<link rel="stylesheet" href="/manager-test/styles.css">')
+                         '<link rel="stylesheet" href="/manager/styles.css">')
                 .replace("</head>", PILOT_STYLE + "</head>", 1)
                 .replace('Введите код администратора для управления VPN.',
                          'Введите код администратора CAESAR VPN для входа в HOSTKEY.')
                 .replace('<div class="m-grid layout">',
-                         '<p class="pilot-note">🔒 Безопасный пилот HOSTKEY: кнопки управления работают '
-                         'только для явно разрешённых тестовых клиентов. Изменения VPN применяются '
-                         'по таймеру (до пяти минут).</p>'
+                         '<p class="pilot-note">🔒 CAESAR VPN MANAGER: защищённое управление клиентами. '
+                         'Изменения VPN применяются автоматически в течение пяти минут, '
+                         'перед каждым изменением сохраняется резервная копия.</p>'
                          '<div class="m-grid layout">', 1)
                 .replace('id="pushStatus" class="m-muted">За 7, 3 и 1 день до окончания подписки.',
                          'id="pushStatus" class="m-muted">Уведомления включим после запуска панели.')
@@ -144,9 +145,18 @@ class Panel:
     def __call__(self, environ, start_response):
         method = environ.get("REQUEST_METHOD", "GET")
         path = unquote(environ.get("PATH_INFO", ""))
-        if not path.startswith(PREFIX):
+        legacy = path == LEGACY_PREFIX or path.startswith(LEGACY_PREFIX + '/')
+        if legacy and method == 'GET' and path in (LEGACY_PREFIX, LEGACY_PREFIX + '/'):
+            start_response('308 Permanent Redirect', [('Location', PREFIX + '/'),
+                                                      ('Cache-Control', 'no-store'),
+                                                      ('Content-Length', '0')])
+            return [b'']
+        if legacy:
+            subpath = path[len(LEGACY_PREFIX):]
+        elif path == PREFIX or path.startswith(PREFIX + '/'):
+            subpath = path[len(PREFIX):]
+        else:
             return self._respond(start_response, "404 Not Found", {"ok": False, "error": "Not found"})
-        subpath = path[len(PREFIX):]
         if method == "GET" and subpath in ("", "/"):
             try:
                 page = panel_html(self.frontend)
@@ -170,7 +180,7 @@ class Panel:
                                                                 "xray_mode": True, "read_only": not self.ops.enabled,
                                                                 "full_access": self.ops.allow_all})
         if method not in ("GET", "POST"):
-            return self._respond(start_response, "405 Method Not Allowed", {"ok": False, "error": "Read-only pilot"})
+            return self._respond(start_response, "405 Method Not Allowed", {"ok": False, "error": "Method not allowed"})
         if method == "POST":
             origin = environ.get("HTTP_ORIGIN", "")
             if origin != f"https://{URL_HOST}":
@@ -211,7 +221,7 @@ class Panel:
             return self._respond(start_response, status, {"ok": False, "error": str(error)})
         except (OSError, sqlite3.Error):
             return self._respond(start_response, "503 Service Unavailable", {"ok": False, "error": "Database unavailable"})
-        return self._respond(start_response, "405 Method Not Allowed", {"ok": False, "error": "Read-only pilot"})
+        return self._respond(start_response, "405 Method Not Allowed", {"ok": False, "error": "Method not allowed"})
 
     @staticmethod
     def _json_body(environ) -> dict:
