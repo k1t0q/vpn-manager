@@ -273,6 +273,24 @@
     }
   }
 
+  let statusRefreshPending = false;
+  async function refreshPendingStatuses() {
+    if (!state.token || state.writePending || statusRefreshPending || document.hidden ||
+        !state.clients.some(c => c.vpn_state === 'pending')) return;
+    statusRefreshPending = true;
+    try {
+      const data = await request('/api/clients');
+      if (!state.token) return;
+      state.clients = data.clients;
+      render();
+    } catch { /* Manual refresh remains available if the API is temporarily unavailable. */ }
+    finally { statusRefreshPending = false; }
+  }
+
+  // The Xray fallback timer runs every five minutes. Keep checking until it
+  // confirms the requested state, even after the initial fast-sync window.
+  setInterval(refreshPendingStatuses, 10000);
+
   async function mutate(action, id, payload, label) {
     if (state.writePending) {
       status('Подожди завершения предыдущего действия');
@@ -286,18 +304,7 @@
       const result = await request(path, {method: 'POST', body: payload, requestId});
       await loadClients();
       status(`${label}. ${result.fast_sync_requested ? 'Сервер получил запрос на быструю синхронизацию.' : 'Синхронизация VPN — до пяти минут.'}`);
-      if (result.sync_pending) {
-        for (const delay of [2500, 6500, 14000]) {
-          setTimeout(async () => {
-            if (!state.token || state.writePending) return;
-            try {
-              const data = await request('/api/clients');
-              state.clients = data.clients;
-              render();
-            } catch { /* The manual refresh button remains available. */ }
-          }, delay);
-        }
-      }
+      if (result.sync_pending) setTimeout(refreshPendingStatuses, 2500);
       return true;
     } catch (e) {
       status(`Ошибка: ${e.message}`, true);

@@ -148,6 +148,9 @@ class HostkeyPanelTests(unittest.TestCase):
         self.assertNotIn('Пригласил: ${esc(findReferrer(c.referrer_id))}', panel_js)
         self.assertIn('pilot-devices-mobile', panel_js)
         self.assertIn('devices(c, true)', panel_js)
+        self.assertIn('setInterval(refreshPendingStatuses, 10000)', panel_js)
+        self.assertIn("state.clients.some(c => c.vpn_state === 'pending')", panel_js)
+        self.assertIn('if (result.sync_pending) setTimeout(refreshPendingStatuses, 2500)', panel_js)
         self.assertIn('.cards .info{display:grid;grid-template-columns:minmax(0,1fr)', data)
         self.assertNotIn('VPN MANAGER · HOSTKEY', data)
 
