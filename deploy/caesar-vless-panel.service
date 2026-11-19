@@ -1,0 +1,30 @@
+[Unit]
+Description=CAESAR VPN HOSTKEY read-only administration pilot
+After=network.target
+
+[Service]
+Type=simple
+User=caesar-manager
+Group=caesar-manager
+WorkingDirectory=/srv/caesar-manager-src
+ExecStart=/usr/bin/python3 /srv/caesar-manager-src/server/hostkey_panel.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=localhost
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
