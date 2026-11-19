@@ -91,3 +91,21 @@ python3 -m unittest discover -s tests -p 'xray_*_test.py' -v
 
 No real IP, UUID, token, password, private key or customer data is hardcoded
 in this branch.
+# Personal portal: CAESAR VPN
+
+The public `/connect/<permanent-token>` page displays the live legacy billing
+`clients.start_date`, `clients.end_date`, and `clients.period` from
+`/var/lib/caesar-manager/clients.db`. Refreshing after a renewal recomputes
+days remaining and the progress bar; lifetime clients see infinity instead.
+Two independently managed profiles (phone UXWay and PC INCY) have separate
+activation states. These are **profile entitlements**, not reliable hardware
+device IDs or real-time online presence signals. Installation links go to the
+UXWay app stores and INCY's official GitHub Windows installer.
+
+Once the pilot profile is tested, automatic Xray expiry reconciliation can be
+enabled with `bash /srv/caesar-manager-src/deploy/hostkey-expiry-stage.sh`.
+The timer runs every five minutes, validates before applying, and preserves
+legacy unmanaged Xray clients. It must NOT be confused with the unfinished
+VPN MANAGER panel migration: until the panel backend is connected to this
+working database, editing records on AdminVPS does not update HOSTKEY.
+
