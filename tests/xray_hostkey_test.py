@@ -76,6 +76,21 @@ class XrayMigrationTests(unittest.TestCase):
         with self.assertRaises(MigrationError):
             proposed_config({"inbounds": []}, [])
 
+    def test_caddy_terminated_tls_may_omit_xray_security(self):
+        import json
+        config = json.loads(json.dumps(SAMPLE))
+        config["inbounds"][0]["streamSettings"].pop("security")
+        planned, info = proposed_config(config, [])
+        self.assertEqual(planned, config)
+        self.assertEqual(info["unmanaged_preserved"], 2)
+
+    def test_non_ws_security_is_still_rejected(self):
+        import json
+        config = json.loads(json.dumps(SAMPLE))
+        config["inbounds"][0]["streamSettings"]["security"] = "tls"
+        with self.assertRaises(MigrationError):
+            proposed_config(config, [])
+
     def test_sync_without_apply_does_not_replace_config(self):
         import json
         self.config = Path(self.dir.name) / "config.json"
