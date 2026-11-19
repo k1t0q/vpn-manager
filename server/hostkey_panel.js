@@ -29,7 +29,10 @@
     try { result = await response.json(); } catch { throw new Error(`HTTP ${response.status}`); }
     if (!response.ok) {
       if (response.status === 401 && path !== '/auth/login') signOut(false);
-      throw new Error(response.status === 401 ? 'Нужно заново войти' : (result.error || `HTTP ${response.status}`));
+      if (response.status === 401) {
+        throw new Error(path === '/auth/login' ? 'Неверный код администратора' : 'Нужно заново войти');
+      }
+      throw new Error(result.error || `HTTP ${response.status}`);
     }
     return result;
   }
@@ -176,7 +179,7 @@
 
   $('login').addEventListener('submit', async event => {
     event.preventDefault();
-    const code = $('code').value;
+    const code = $('code').value.trim();
     $('code').value = '';
     status('Проверяю код…');
     try {
