@@ -1,0 +1,29 @@
+[Unit]
+Description=CAESAR VPN read-only VLESS subscriptions
+After=network.target
+
+[Service]
+Type=simple
+User=caesar-manager
+Group=caesar-manager
+WorkingDirectory=/srv/caesar-manager-src/server
+Environment=CAESAR_DB=/var/lib/caesar-manager/clients.db
+ExecStart=/usr/bin/python3 /srv/caesar-manager-src/server/xray_subscription.py
+Restart=on-failure
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+CapabilityBoundingSet=
+IPAddressDeny=any
+IPAddressAllow=localhost
+
+[Install]
+WantedBy=multi-user.target
