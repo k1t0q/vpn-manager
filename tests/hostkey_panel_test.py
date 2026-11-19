@@ -124,6 +124,9 @@ class HostkeyPanelTests(unittest.TestCase):
         self.assertNotIn('<script src="config.js', data)
         self.assertIn('CAESAR VPN MANAGER: защищённое управление', data)
         self.assertIn('<th>Подписка</th><th>Доступ VPN</th><th>Действия</th>', data)
+        self.assertIn('.m-scroll.desktop th:last-child,.m-scroll.desktop td:last-child', data)
+        self.assertIn('position:sticky;right:0', data)
+        self.assertIn('.m-scroll.desktop .client-actions{display:grid;', data)
 
     def test_vpn_status_never_confuses_paid_status_with_deployed_keys(self):
         with sqlite3.connect(self.db) as con:
