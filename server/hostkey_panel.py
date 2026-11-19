@@ -1,7 +1,7 @@
-"""Read-only HOSTKEY pilot of the familiar VPN MANAGER UI.
+"""HOSTKEY VPN MANAGER with explicit per-client pilot write authorization.
 
-Uses only Python's standard library. No write routes for clients, VLESS, Xray,
-Caddy, billing, or sessions are exposed. Promote only after live tests.
+The service never changes Xray/Caddy directly. SQLite writes are allowlisted,
+idempotent and backed up; the existing Xray reconciliation timer applies them.
 """
 
 from __future__ import annotations
@@ -19,6 +19,11 @@ import time
 from urllib.parse import unquote
 from wsgiref.simple_server import make_server, WSGIRequestHandler
 
+try:
+    from .hostkey_panel_ops import PanelOperations, OperationError
+except ImportError:
+    from hostkey_panel_ops import PanelOperations, OperationError
+
 
 PREFIX = "/manager-test"
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,13 +34,14 @@ MAX_BODY = 4096
 TOKEN_RE = re.compile(r"^Bearer ([A-Za-z0-9_-]{30,100})$")
 LINK_RE = re.compile(r"^/api/clients/([1-9][0-9]*)/link$")
 HISTORY_RE = re.compile(r"^/api/clients/([1-9][0-9]*)/history$")
+ACTION_RE = re.compile(r"^/api/clients/([1-9][0-9]*)/(edit|extend|toggle|provision|archive|restore)$")
 FRONTEND_SCRIPTS = ('<script src="config.js?v=awg1"></script>'
                     '<script src="sqlite-manager.js?v=alignment1"></script>'
                     '<script src="push-manager.js?v=push1"></script>')
 PILOT_SCRIPT = '<script src="/manager-test/panel.js"></script>'
 PILOT_STYLE = '''<style>
-/* A visible read-only pilot: billing changes are disabled server-side too. */
-.create-client-section,#enablePush,#testPush,#disablePush{display:none!important}
+/* Billing changes are gated by an explicit per-client pilot allowlist. */
+#enablePush,#testPush,#disablePush{display:none!important}
 .pilot-note{background:#26364b;border:1px solid #55729b;border-radius:10px;padding:14px;
 margin-bottom:14px;color:#e5edfa;line-height:1.45}
 .pilot-devices{display:grid;gap:4px;text-align:left;font-size:12px}
@@ -44,7 +50,7 @@ margin-bottom:14px;color:#e5edfa;line-height:1.45}
 </style>'''
 
 
-def client_rows(db_path: Path) -> list[dict]:
+def client_rows(db_path: Path, operations: PanelOperations | None = None) -> list[dict]:
     """Return billing and device *statuses*, never UUIDs or bearer tokens."""
     with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=5) as con:
         con.row_factory = sqlite3.Row
@@ -56,12 +62,18 @@ def client_rows(db_path: Path) -> list[dict]:
             SELECT client_id,kind,manually_enabled,deployed
               FROM caesar_vless_devices
         """).fetchall()
+        has_archives = con.execute("SELECT 1 FROM sqlite_master WHERE name='caesar_client_archives'").fetchone()
+        archived = {row[0] for row in con.execute('SELECT client_id FROM caesar_client_archives')} if has_archives else set()
+    allowed = operations.permitted_ids() if operations else set()
     device_map = defaultdict(dict)
     for d in devices:
         device_map[d["client_id"]][d["kind"]] = {"allowed": bool(d["manually_enabled"]),
                                                  "deployed": bool(d["deployed"])}
     return [{**dict(c), "devices": device_map[c["id"]],
-             "has_portal": len(device_map[c["id"]]) == 2} for c in clients]
+             "has_portal": len(device_map[c["id"]]) == 2,
+             "archived": c["id"] in archived,
+             "can_manage": (operations.allow_all if operations else False) or c["id"] in allowed}
+            for c in clients]
 
 
 def personal_link(db_path: Path, client_id: int) -> str | None:
@@ -88,15 +100,16 @@ def panel_html(source: Path = ROOT / "index.html") -> bytes:
                 .replace("AmneziaWG", "VLESS")
                 .replace("CAESAR BOT", "CAESAR VPN")
                 .replace("<h1>VPN MANAGER</h1>", "<h1>VPN MANAGER · HOSTKEY</h1>")
-                .replace("Версия v1.80 · 13.11.2026", "Тестовый просмотр · VLESS · только чтение")
+                .replace("Версия v1.80 · 13.11.2026", "Пилот управления · VLESS · HOSTKEY")
                 .replace('<link rel="stylesheet" href="styles.css?v=5.16">',
                          '<link rel="stylesheet" href="/manager-test/styles.css">')
                 .replace("</head>", PILOT_STYLE + "</head>", 1)
                 .replace('Введите код администратора для управления VPN.',
-                         'Введите код администратора. Пока доступен только просмотр, без изменений клиентов.')
+                         'Введите код администратора CAESAR VPN для входа в HOSTKEY.')
                 .replace('<div class="m-grid layout">',
-                         '<p class="pilot-note">🔒 Тестовая панель HOSTKEY: просмотр 70 клиентов, сроков подписок '
-                         'и двух устройств. Создание и редактирование клиентов временно отключены.</p>'
+                         '<p class="pilot-note">🔒 Безопасный пилот HOSTKEY: кнопки управления работают '
+                         'только для явно разрешённых тестовых клиентов. Изменения VPN применяются '
+                         'по таймеру (до пяти минут).</p>'
                          '<div class="m-grid layout">', 1)
                 .replace('id="pushStatus" class="m-muted">За 7, 3 и 1 день до окончания подписки.',
                          'id="pushStatus" class="m-muted">Уведомления включим после запуска панели.')
@@ -111,6 +124,7 @@ class Panel:
         self.code_file = code_file
         self.frontend = frontend
         self.javascript = javascript
+        self.ops = PanelOperations.from_environment(db_path)
         self.sessions: dict[str, float] = {}
         self.attempts: dict[str, list[float]] = defaultdict(list)
 
@@ -140,7 +154,7 @@ class Panel:
             return self._respond(start_response, "200 OK", data, content_type="text/css; charset=utf-8")
         if method == "GET" and subpath == "/health":
             return self._respond(start_response, "200 OK", {"ok": True, "version": "caesar-hostkey-readonly-1",
-                                                                "xray_mode": True, "read_only": True})
+                                                                "xray_mode": True, "read_only": not self.ops.enabled})
         if method not in ("GET", "POST"):
             return self._respond(start_response, "405 Method Not Allowed", {"ok": False, "error": "Read-only pilot"})
         if method == "POST":
@@ -157,7 +171,16 @@ class Panel:
                 self.sessions.pop(sha256(found.group(1).encode()).hexdigest(), None)
                 return self._respond(start_response, "200 OK", {"ok": True})
             if method == "GET" and subpath == "/api/clients":
-                return self._respond(start_response, "200 OK", {"ok": True, "clients": client_rows(self.db_path)})
+                return self._respond(start_response, "200 OK", {"ok": True, "clients": client_rows(self.db_path, self.ops),
+                                                                    "pilot_enabled": self.ops.enabled})
+            if method == "POST":
+                action = ACTION_RE.fullmatch(subpath)
+                if action or subpath == "/api/clients":
+                    payload = self._json_body(environ)
+                    identifier = environ.get('HTTP_IDEMPOTENCY_KEY', '')
+                    result = self.ops.execute(action.group(2) if action else 'create',
+                                              int(action.group(1)) if action else None, payload, identifier)
+                    return self._respond(start_response, "201 Created" if not action else "200 OK", result)
             link = LINK_RE.fullmatch(subpath)
             if method == "GET" and link:
                 url = personal_link(self.db_path, int(link.group(1)))
@@ -167,9 +190,26 @@ class Panel:
             history = HISTORY_RE.fullmatch(subpath)
             if method == "GET" and history:
                 return self._respond(start_response, "200 OK", {"ok": True, "history": personal_history(self.db_path, int(history.group(1)))})
+        except OperationError as error:
+            status = {400: '400 Bad Request', 403: '403 Forbidden', 404: '404 Not Found',
+                      409: '409 Conflict'}.get(error.status, '400 Bad Request')
+            return self._respond(start_response, status, {"ok": False, "error": str(error)})
         except (OSError, sqlite3.Error):
             return self._respond(start_response, "503 Service Unavailable", {"ok": False, "error": "Database unavailable"})
         return self._respond(start_response, "405 Method Not Allowed", {"ok": False, "error": "Read-only pilot"})
+
+    @staticmethod
+    def _json_body(environ) -> dict:
+        try:
+            length = int(environ.get('CONTENT_LENGTH', '0'))
+            if length < 2 or length > MAX_BODY:
+                raise ValueError()
+            payload = json.loads(environ['wsgi.input'].read(length))
+            if not isinstance(payload, dict):
+                raise ValueError()
+            return payload
+        except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+            raise OperationError('Invalid JSON body') from None
 
     def _authenticated(self, environ) -> bool:
         found = TOKEN_RE.fullmatch(environ.get("HTTP_AUTHORIZATION", ""))
