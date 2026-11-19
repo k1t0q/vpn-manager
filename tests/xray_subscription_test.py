@@ -1,3 +1,4 @@
+from datetime import date, timedelta, datetime
 from pathlib import Path
 import sqlite3
 import sys
@@ -7,7 +8,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server"))
 import xray_subscription
-from xray_hostkey import provision, active_subscription
+from xray_hostkey import provision, MOSCOW
 
 
 class SubscriptionTests(unittest.TestCase):
@@ -15,8 +16,8 @@ class SubscriptionTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.db = Path(self.temp.name) / "clients.db"
         with sqlite3.connect(self.db) as con:
-            con.execute("CREATE TABLE clients(id INTEGER PRIMARY KEY, period TEXT, end_date TEXT)")
-            con.executemany("INSERT INTO clients VALUES(?,?,?)", [(1, "lifetime", None), (2, "1m", "2020-01-01")])
+            con.execute("CREATE TABLE clients(id INTEGER PRIMARY KEY, period TEXT, start_date TEXT, end_date TEXT)")
+            con.executemany("INSERT INTO clients VALUES(?,?,?,?)", [(1, "lifetime", "2026-01-01", None), (2, "1m", "2019-12-01", "2020-01-01")])
         provision(self.db, [1, 2])
         with sqlite3.connect(self.db) as con:
             self.live_token = con.execute("SELECT token FROM caesar_vless_devices WHERE client_id=1 AND kind='phone'").fetchone()[0]
@@ -72,8 +73,14 @@ class SubscriptionTests(unittest.TestCase):
         self.assertEqual(result["headers"]["Content-Type"], "text/html; charset=utf-8")
         self.assertIn(b"uxway://add/https://", result["body"])
         self.assertIn(b"incy://import/https://", result["body"])
+        self.assertIn("Ваши устройства".encode(), result["body"])
+        self.assertIn("2 из 2 доступны".encode(), result["body"])
+        self.assertIn(b"https://apps.apple.com/ru/app/uxway/id6762559624", result["body"])
+        self.assertIn(b"https://github.com/INCY-DEV/incy-platforms/releases/download/latest/incy-windows-setup.exe", result["body"])
+        self.assertIn("Подписка: Навсегда".encode(), result["body"])
+        self.assertNotIn(b"role=\"progressbar\"", result["body"])
+        self.assertEqual(result["headers"]["Referrer-Policy"], "no-referrer")
         self.assertNotIn(b"original-test", result["body"])
-
 
     def test_mobile_landing_is_top_aligned_without_affecting_desktop(self):
         page = self.request("/connect/" + self.landing_token)["body"].decode("utf-8")
@@ -81,6 +88,46 @@ class SubscriptionTests(unittest.TestCase):
         self.assertIn("body{display:block;min-height:100svh;padding:28px 18px 36px}", page)
         self.assertIn("main{margin:0 auto}", page)
         self.assertIn("body{margin:0;min-height:100vh;display:grid;place-items:center", page)
+
+    def test_remaining_days_and_progress_have_inclusive_deadline(self):
+        current = date(2026, 11, 19)
+        status = xray_subscription.subscription_display("1m", "2026-11-01", "2026-11-30", today=current)
+        self.assertEqual(status["days"], 12)
+        self.assertEqual(status["progress"], 40)
+        self.assertEqual(status["end"], date(2026, 11, 30))
+        self.assertEqual(xray_subscription.subscription_display("1m", "2026-11-01", "2026-11-19", today=current)["days"], 1)
+        expired = xray_subscription.subscription_display("1m", "2026-11-01", "2026-11-18", today=current)
+        self.assertEqual((expired["days"], expired["progress"]), (0, 0))
+
+    def test_invalid_date_and_lifetime_do_not_invent_progress(self):
+        lifetime = xray_subscription.subscription_display("lifetime", None, "2020-01-01", today=date(2026, 11, 19))
+        self.assertTrue(lifetime["lifetime"])
+        self.assertIsNone(lifetime["days"])
+        unknown = xray_subscription.subscription_display("1m", "garbage", "nonsense", today=date(2026, 11, 19))
+        self.assertIsNone(unknown["progress"])
+
+    def test_renewal_in_database_updates_portal_without_changing_link(self):
+        today = datetime.now(MOSCOW).date()
+        first_end = today + timedelta(days=9)
+        with sqlite3.connect(self.db) as con:
+            con.execute("UPDATE clients SET period='1m',start_date=?,end_date=? WHERE id=1", (today.isoformat(), first_end.isoformat()))
+        first = self.request("/connect/" + self.landing_token)["body"]
+        self.assertIn("10 дней осталось".encode(), first)
+        self.assertIn(b"role=\"progressbar\"", first)
+        with sqlite3.connect(self.db) as con:
+            con.execute("UPDATE clients SET end_date=? WHERE id=1", ((first_end + timedelta(days=14)).isoformat(),))
+        updated = self.request("/connect/" + self.landing_token)["body"]
+        self.assertIn("24 дня осталось".encode(), updated)
+        self.assertNotIn("10 дней осталось".encode(), updated)
+
+    def test_each_device_reports_own_activation_status(self):
+        with sqlite3.connect(self.db) as con:
+            con.execute("UPDATE caesar_vless_devices SET manually_enabled=0 WHERE client_id=1 AND kind='pc'")
+        page = self.request("/connect/" + self.landing_token)["body"]
+        self.assertIn("Отключён".encode(), page)
+        self.assertIn("1 из 2 доступны".encode(), page)
+        self.assertIn(b"uxway://add/https://", page)
+        self.assertNotIn(b"incy://import/https://", page)
 
 
 if __name__ == "__main__":
