@@ -32,8 +32,10 @@ be adapted and separately tested before mass cutover.
 6. The default `sync` is a dry run: it creates a temporary JSON and asks Xray
    to validate it. Only `sync --apply` alters Xray and briefly restarts it.
    A pre-change config backup and rollback are built in.
-7. Expiry/renewal reconciliation and the existing VPN MANAGER UI integration
-   still need wiring and tests. Do **not** bulk provision 70 records yet.
+7. A five-minute expiry reconciliation timer has been prepared but is **not**
+   installed or enabled during staging. Renewal hooks and the existing VPN
+   MANAGER UI integration still need wiring and tests. Do **not** bulk provision
+   70 records yet.
 
 ## Stage on HOSTKEY (does not modify live VPN)
 
@@ -64,6 +66,22 @@ client changes.
    `uxway://add/https://...`. Both still require real client verification.
 7. Adapt admin CRUD, subscriptions, scheduled expiry, renewal, device alerts,
    and bulk onboarding; regression-test before serving the other clients.
+
+## Guarded read-only portal staging (no Xray restart)
+
+```bash
+bash /srv/caesar-manager-src/deploy/hostkey-subscriptions-stage.sh
+python3 /srv/caesar-manager-src/deploy/hostkey-caddy-routes.py
+```
+
+The first command starts a localhost-only unprivileged reader at
+`127.0.0.1:5058`. The second *validates* a candidate Caddyfile without editing
+the live file. After the owner approves the change, run the same Caddy helper
+with `--apply` to reload Caddy with rollback protection. The regex route for
+`/sub/<long-secret>` cannot match the existing `/sub/test-2.txt` static test.
+
+The expiry timer files are templates only: do not enable until the admin panel
+renewal semantics and a complete pilot have been verified.
 
 ## Tests
 
