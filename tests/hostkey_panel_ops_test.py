@@ -77,6 +77,39 @@ class PanelOperationsTests(unittest.TestCase):
             self.assertIn('VPN MANAGER', con.execute('SELECT description FROM client_history WHERE client_id=?',
                                                      (result['id'],)).fetchone()[0])
 
+    def test_full_mode_blocks_and_unblocks_both_keys_with_fast_sync_signal(self):
+        signal = self.root / 'sync.signal'
+        signal.touch()
+        full = PanelOperations(self.db, allow_all=True, backup_dir=self.root / 'backups',
+                               sync_signal_path=signal)
+        full.execute('provision', 33, {}, 'provision-lifetime-user-20261119')
+        blocked = full.execute('access', 33, {'enabled': False}, 'disable-both-devices-20261119')
+        self.assertTrue(blocked['fast_sync_requested'])
+        self.assertTrue(signal.read_text().strip())
+        with sqlite3.connect(self.db) as con:
+            self.assertEqual(con.execute('SELECT SUM(manually_enabled) FROM caesar_vless_devices '
+                                         'WHERE client_id=33').fetchone()[0], 0)
+            self.assertIsNotNone(con.execute('SELECT token FROM caesar_connect_links WHERE client_id=33').fetchone())
+        enabled = full.execute('access', 33, {'enabled': True}, 'enable-both-devices-20261119')
+        self.assertTrue(enabled['fast_sync_requested'])
+        with sqlite3.connect(self.db) as con:
+            self.assertEqual(con.execute('SELECT SUM(manually_enabled) FROM caesar_vless_devices '
+                                         'WHERE client_id=33').fetchone()[0], 2)
+            self.assertEqual(con.execute('SELECT COUNT(*) FROM client_history WHERE client_id=33 '
+                                         'AND event_type="client_access"').fetchone()[0], 2)
+
+    def test_expired_subscription_cannot_be_unblocked(self):
+        self.run_action('provision', 93)
+        with sqlite3.connect(self.db) as con:
+            con.execute('UPDATE clients SET end_date="2020-01-01" WHERE id=93')
+        full = PanelOperations(self.db, allow_all=True, backup_dir=self.root / 'backups')
+        full.execute('access', 93, {'enabled': False}, 'expire-block-both-20261119')
+        with self.assertRaisesRegex(OperationError, 'extend'):
+            full.execute('access', 93, {'enabled': True}, 'expire-enable-both-20261119')
+        with sqlite3.connect(self.db) as con:
+            self.assertEqual(con.execute('SELECT SUM(manually_enabled) FROM caesar_vless_devices '
+                                         'WHERE client_id=93').fetchone()[0], 0)
+
     def test_provision_toggle_archive_and_restore_with_uuid_retention(self):
         self.run_action('provision', 93)
         with sqlite3.connect(self.db) as con:
