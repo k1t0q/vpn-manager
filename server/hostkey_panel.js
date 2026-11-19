@@ -107,10 +107,12 @@
     const a = vpnAccess(c);
     return `<span class="vpn-access ${a.cls}" title="Доступность ключей в Xray, не онлайн-статус устройства">${a.text}</span>`;
   }
-  function devices(c) {
+  function devices(c, compact = false) {
     return ['phone','pc'].map(kind => {
       const v = deviceState(c,kind);
-      return `<span class="pilot-device-${v.cls}">${kind === 'phone' ? '📱 Телефон' : '💻 ПК'}: ${v.text}</span>`;
+      const description = compact ? v.text.replace('отключён (срок истёк)', 'срок истёк')
+        .replace('отключается (срок истёк)', 'отключается') : v.text;
+      return `<span class="pilot-device-${v.cls}">${kind === 'phone' ? '📱 Телефон' : '💻 ПК'}: ${description}</span>`;
     }).join('');
   }
   function actions(c) {
@@ -164,16 +166,14 @@
     $('sExpired').textContent = stats.filter(s => s.name === 'expired').length;
     $('empty').classList.toggle('hidden', clients.length > 0);
     $('rows').innerHTML = clients.map(c => {
-      const state = stateOf(c);
       const days = daysRemaining(c);
-      const remaining = days === Infinity ? '∞' : (days === null ? '—' : `${Math.max(0,days)} дн.`);
-      const subscription = c.archived ? {label: 'Архив', name: 'expired'} : state;
+      const remaining = days === Infinity ? '∞' : (days === null ? '—' : Math.max(0,days));
       return `<tr><td><strong>${esc(c.name || 'Без имени')}</strong><small>№ ${c.id}</small></td>
         <td>${esc(c.phone || '—')}</td><td>${esc(findReferrer(c.referrer_id))}</td>
         <td><div class="pilot-devices">${devices(c)}</div></td>
         <td>${esc(periodLabel(c.period))}</td><td>${esc(c.start_date || '—')}</td>
         <td>${lifetime(c) ? '∞' : esc(c.end_date || '—')}</td>
-        <td><div class="subscription-cell"><strong>${remaining}</strong><span class="status ${subscription.name}">${subscription.label}</span></div></td>
+        <td><strong class="remaining-days">${remaining}</strong></td>
         <td>${vpnBadge(c)}</td><td>${actions(c)}</td></tr>`;
     }).join('');
     $('cards').innerHTML = clients.map(c => {
@@ -182,8 +182,7 @@
       return `<article class="card"><div class="card-top"><div><h3 class="card-client-name">${esc(c.name || 'Без имени')}</h3><small class="m-muted">№ ${c.id} · ${esc(c.phone || 'Без телефона')}</small></div><span class="status ${s.name}">${s.label}</span></div>
         <div class="info"><p>${esc(periodLabel(c.period))} · ${lifetime(c) ? 'Бессрочно' : (days === null ? 'Дата не указана' : `осталось ${Math.max(0,days)} дн.`)}</p>
         <p>${esc(c.start_date || '—')} — ${lifetime(c) ? '∞' : esc(c.end_date || '—')}</p>
-        <p>Пригласил: ${esc(findReferrer(c.referrer_id))}</p>
-        <p>${vpnBadge(c)}</p><div class="pilot-devices">${devices(c)}</div></div>
+        <p>${vpnBadge(c)}</p><div class="pilot-devices pilot-devices-mobile">${devices(c, true)}</div></div>
         <div class="manage"><div class="manage-body">${actions(c)}</div></div></article>`;
     }).join('');
     status(`Показано ${clients.length} клиентов · ${state.fullAccess ? 'полное управление' : 'режим просмотра'}`);

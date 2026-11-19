@@ -72,10 +72,13 @@ font-size:12px;font-weight:750;white-space:nowrap;background:#243045;color:#dce8
 .vpn-access.pending{background:#3b3150;color:#ceacff}
 .vpn-access.none{color:#aeb4c2}
 .vpn-access-help{font-size:11px;color:#aeb4c2;margin-top:5px;line-height:1.35}
-.subscription-cell{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:7px;white-space:nowrap;width:100%}
-.subscription-cell strong{font-size:13px;font-weight:750}
-.subscription-cell .status{display:inline-block}
+.remaining-days{font-size:13px;font-weight:750}
 .m-scroll.desktop th:nth-child(8),.m-scroll.desktop td:nth-child(8){text-align:center}
+.cards .info{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin-top:11px}
+.cards .info p{margin:0;font-size:13px}
+.cards .pilot-devices-mobile{display:flex;flex-wrap:nowrap;align-items:center;gap:12px;white-space:nowrap;font-size:11px;background:transparent;padding:0}
+.cards .pilot-devices-mobile>span{min-width:0}
+@media (max-width:390px){.cards .pilot-devices-mobile{font-size:10px;gap:6px}}
 .client-actions [data-action="access"].danger{background:#673237;color:#ffe3e5;border-color:#a35258}
 /* Use the available desktop width instead of leaving large empty side margins. */
 .m-wrap{width:100%;max-width:1920px;padding:0 18px 26px}
@@ -202,8 +205,7 @@ def panel_html(source: Path = ROOT / "index.html") -> bytes:
                          'aria-hidden="true"></span><span>Загружаем VPN MANAGER…</span></div></div>', 1)
                 .replace("AmneziaWG", "VLESS")
                 .replace("CAESAR BOT", "CAESAR VPN")
-                .replace("<h1>VPN MANAGER</h1>", "<h1>VPN MANAGER · HOSTKEY</h1>")
-                .replace("Версия v1.80 · 13.11.2026", "CAESAR VPN · VLESS · HOSTKEY")
+                .replace("Версия v1.80 · 13.11.2026", "CAESAR VPN · VLESS")
                 .replace('<link rel="stylesheet" href="styles.css?v=5.16">',
                          '<link rel="stylesheet" href="/manager/styles.css">')
                 .replace("</head>", PILOT_STYLE + "</head>", 1)
@@ -218,7 +220,7 @@ def panel_html(source: Path = ROOT / "index.html") -> bytes:
                          'id="pushStatus" class="m-muted">Включите push, чтобы получать напоминания за 7, 3 и 1 день, а также об окончании подписки.')
                 .replace('<th>VLESS</th>', '<th>Телефон / ПК</th>')
                 .replace('<th>Осталось дней</th><th>Статус</th><th>Действия</th>',
-                         '<th>Подписка</th><th>Доступ VPN</th><th>Действия</th>')
+                         '<th>Осталось дней</th><th>Доступ VPN</th><th>Действия</th>')
                 ).encode("utf-8")
 
 
