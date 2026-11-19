@@ -1,5 +1,5 @@
 [Unit]
-Description=CAESAR VPN HOSTKEY read-only administration pilot
+Description=CAESAR VPN MANAGER production administration
 After=network.target
 
 [Service]
