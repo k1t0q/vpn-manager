@@ -91,6 +91,7 @@ class SubscriptionTests(unittest.TestCase):
         self.assertIn("main{margin:0 auto}", page)
         self.assertIn("body{margin:0;min-height:100vh;display:grid;place-items:center", page)
         self.assertIn('.foot span{display:block', page)
+        self.assertIn('.foot{margin:0;', page)
         self.assertIn('<span>У каждого устройства свой ключ.</span>', page)
         self.assertNotIn('Для телефона используйте UXWay, для компьютера — INCY.', page)
 
