@@ -100,6 +100,7 @@ main{{width:min(100%,480px);padding:34px 28px;border:1px solid #30394b;border-ra
 h1{{margin:0;font-size:32px;letter-spacing:1px}}.tag{{margin-top:10px;color:#9dadc6;font-size:14px}}.plan{{margin:26px 0 24px;padding:14px 16px;border:1px solid #3b4a60;border-radius:12px;background:#202a3a;color:#d7e3f4}}
 a{{display:block;text-align:center;margin:11px 0;padding:15px 12px;border-radius:12px;text-decoration:none;font-weight:700;transition:filter .15s}}a:hover{{filter:brightness(1.15)}}.primary{{background:#5c88ff;color:#fff}}.secondary{{background:#2b3d59;color:#f7f8fd;border:1px solid #5471a4}}
 .foot{{margin:22px 0 0;font-size:13px;line-height:1.6;color:#91a1bd}}.notice{{padding:14px;border-radius:12px;background:#493634;color:#ffe1db}}
+@media (max-width:600px){{body{{display:block;min-height:100svh;padding:28px 18px 36px}}main{{margin:0 auto}}}}
 </style></head><body><main><h1>CAESAR VPN</h1><div class="tag">Ваше персональное подключение</div>
 <div class="plan">{escape(period)}</div>{links}
 <p class="foot">Для телефона используйте UXWay, для компьютера — INCY. У каждого устройства свой ключ. Никому не пересылайте эту страницу.</p>
